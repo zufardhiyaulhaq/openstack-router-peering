@@ -176,8 +176,9 @@ func TestCountNonTerminal(t *testing.T) {
 	if _, err := s.Transition(ctx, p3.ID, []model.Status{model.StatusPendingAcceptance}, model.StatusRejected, Patch{}, model.Event{Action: model.ActionRejected}); err != nil {
 		t.Fatal(err)
 	}
+	// p1 (pa requests) counts; p2 (pc requests pa, still pending) does not: incoming requests cost pa nothing.
 	n, err := s.CountNonTerminal(ctx, "pa")
-	if err != nil || n != 2 {
+	if err != nil || n != 1 {
 		t.Fatalf("count = %d err %v (p2 %s)", n, err, p2.ID)
 	}
 	byStatus, _ := s.ListByStatus(ctx, model.StatusRejected)

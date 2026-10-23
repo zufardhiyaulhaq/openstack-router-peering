@@ -205,11 +205,13 @@ func (s *Store) ListByStatus(ctx context.Context, st ...model.Status) ([]model.P
 	return scanAll(rows)
 }
 
-// CountNonTerminal counts the project's peerings, either side, that are not in a terminal state.
+// CountNonTerminal counts the project's open peerings: everything it requested, plus everything it
+// accepted. Incoming requests it has not answered do not count, so another project cannot fill its limit.
 func (s *Store) CountNonTerminal(ctx context.Context, projectID string) (int, error) {
 	var n int
 	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM peerings
-		WHERE (requester_project_id = $1 OR accepter_project_id = $1) AND NOT (status::text = ANY($2::text[]))`,
+		WHERE (requester_project_id = $1 OR (accepter_project_id = $1 AND status <> 'pending_acceptance'))
+		  AND NOT (status::text = ANY($2::text[]))`,
 		projectID, statusTexts(model.TerminalStatuses)).Scan(&n)
 	return n, err
 }

@@ -113,7 +113,9 @@ func (r *Reconciler) driftOne(ctx context.Context, p model.Peering) error {
 	return r.Store.SetWarnings(ctx, p.ID, warnings)
 }
 
-// SweepOnce deletes rpx-* networks of the service project that no live peering owns, once older than OrphanGrace.
+// SweepOnce deletes rpx-* networks of the service project whose peering is finished, once older than
+// OrphanGrace. A network with no row at all is only logged: that means a restored or wrong database, and
+// deleting it would cut live traffic.
 func (r *Reconciler) SweepOnce(ctx context.Context) error {
 	nets, err := r.Neutron.ListOwnNetworks(ctx)
 	if err != nil {
@@ -125,11 +127,15 @@ func (r *Reconciler) SweepOnce(ctx context.Context) error {
 			continue
 		}
 		p, err := r.Store.GetPeering(ctx, n.Name)
-		if err == nil && !p.Status.Terminal() {
+		if errors.Is(err, store.ErrNotFound) {
+			r.log().Warn("transit network has no peering row; leaving it alone", "network", n.ID, "name", n.Name)
 			continue
 		}
-		if err != nil && !errors.Is(err, store.ErrNotFound) {
+		if err != nil {
 			return err
+		}
+		if !p.Status.Terminal() {
+			continue
 		}
 		// Only Neutron objects: the block of a terminal peering is already free.
 		orphan := model.Peering{ID: n.Name, TransitNetworkID: n.ID}

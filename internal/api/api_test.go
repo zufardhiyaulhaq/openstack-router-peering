@@ -128,3 +128,14 @@ func TestCloudAdminListsAll(t *testing.T) {
 		t.Fatalf("admin get %d", code)
 	}
 }
+
+func TestIncomingRequestsDoNotUseLimit(t *testing.T) {
+	e := newTEnv(t)
+	e.h = New(e.st, e.kf, e.nf, func() config.Config { c := e.cfg; c.MaxNonTerminalPerProject = 2; return c }())
+	for i := 0; i < 2; i++ { // project C floods A with requests
+		if code := e.do(t, "POST", "/v1/peerings", "tok-c", map[string]string{"name": "spam", "router_id": routerC, "peer_project_id": "pa"}, nil); code != 201 {
+			t.Fatalf("setup create %d", code)
+		}
+	}
+	e.create(t) // A can still request its own peering
+}

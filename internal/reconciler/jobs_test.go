@@ -130,7 +130,11 @@ func TestSweepOrphan(t *testing.T) {
 	live := e.active(t)
 	ctx := context.Background()
 	e.r.Now = time.Now
-	old := e.nf.AddNetwork("rpx-000000000001", time.Now().Add(-2*time.Hour))
+	gone := e.pending(t) // a finished peering whose network was somehow left behind
+	if _, err := e.st.Transition(ctx, gone.ID, []model.Status{model.StatusPendingAcceptance}, model.StatusCancelled, store.Patch{}, model.Event{Action: model.ActionCancelled}); err != nil {
+		t.Fatal(err)
+	}
+	old := e.nf.AddNetwork(gone.ID, time.Now().Add(-2*time.Hour))
 	young := e.nf.AddNetwork("rpx-000000000002", time.Now())
 	foreign := e.nf.AddNetwork("not-ours", time.Now().Add(-48*time.Hour))
 	if err := e.r.SweepOnce(ctx); err != nil {
@@ -173,5 +177,18 @@ func TestPoolScanFreesLeakedBlock(t *testing.T) {
 	}
 	if again := e.holdBlock(t); again != b {
 		t.Fatalf("leaked block %v not freed (got %v)", b, again)
+	}
+}
+
+func TestSweepSkipsNetworksWithNoRow(t *testing.T) {
+	e := newEnv(t)
+	e.r.Now = time.Now
+	// A network with no DB row at all: a restored or wrong database, not an orphan. Leave it alone.
+	unknown := e.nf.AddNetwork("rpx-0000000000aa", time.Now().Add(-48*time.Hour))
+	if err := e.r.SweepOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !e.nf.HasNetwork(unknown) {
+		t.Fatal("sweep deleted a network it has no record of")
 	}
 }
