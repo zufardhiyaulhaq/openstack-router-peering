@@ -45,7 +45,7 @@ func (r *Reconciler) provisionSteps(ctx context.Context, p *model.Peering) error
 
 	// 1. Transit block.
 	if !p.TransitCIDR.IsValid() {
-		cidr, err := r.Store.AllocateBlock(ctx, p.ID)
+		cidr, err := r.Store.AllocateBlock(ctx, p.ID, r.Me)
 		if err != nil {
 			return err
 		}

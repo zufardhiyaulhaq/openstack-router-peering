@@ -10,6 +10,7 @@ import (
 
 	"github.com/zufardhiyaulhaq/openstack-router-peering/internal/keystone"
 	"github.com/zufardhiyaulhaq/openstack-router-peering/internal/model"
+	"github.com/zufardhiyaulhaq/openstack-router-peering/internal/store"
 )
 
 func (e *env) pending(t *testing.T) model.Peering {
@@ -155,5 +156,22 @@ func TestPoolScanReserves(t *testing.T) {
 	p := e.drain(t, e.accepted(t).ID, 3)
 	if p.Status != model.StatusActive || p.TransitCIDR.Overlaps(netip.MustParsePrefix("100.64.0.0/28")) {
 		t.Fatalf("status %s block %v", p.Status, p.TransitCIDR)
+	}
+}
+
+func TestPoolScanFreesLeakedBlock(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	b := e.holdBlock(t)
+	ps, _ := e.st.ListByStatus(ctx, model.StatusProvisioning)
+	// The holder ends up deleted while still holding its block (the stale-worker race).
+	if _, err := e.st.Transition(ctx, ps[0].ID, []model.Status{model.StatusProvisioning}, model.StatusDeleted, store.Patch{}, model.Event{Action: model.ActionDeleted}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.r.PoolScanOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if again := e.holdBlock(t); again != b {
+		t.Fatalf("leaked block %v not freed (got %v)", b, again)
 	}
 }

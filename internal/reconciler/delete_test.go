@@ -54,10 +54,7 @@ func TestDeleteCleansEverything(t *testing.T) {
 	if nets, subs, ports := e.nf.Counts(); nets+subs+ports != 0 {
 		t.Fatalf("leftovers %d %d %d", nets, subs, ports)
 	}
-	ctx := context.Background()
-	q := &model.Peering{Name: "q", RequesterProjectID: "pa", RequesterRouterID: routerA, AccepterProjectID: "pb", CreatedBy: "ua"}
-	_ = e.st.CreatePeering(ctx, q)
-	if b, _ := e.st.AllocateBlock(ctx, q.ID); b != p.TransitCIDR {
+	if b := e.holdBlock(t); b != p.TransitCIDR {
 		t.Fatalf("block not freed, next got %v", b)
 	}
 	if countEvents(t, e, p.ID, model.ActionDeleted) != 1 {

@@ -103,12 +103,9 @@ func TestProvisionHardErrorRollsBack(t *testing.T) {
 	if last, _ := e.st.LastAction(context.Background(), p.ID); last != model.ActionError {
 		t.Fatalf("last event %q", last)
 	}
-	// The block is free again: a new peering gets the same /29.
-	ctx := context.Background()
-	q := &model.Peering{Name: "q", RequesterProjectID: "pa", RequesterRouterID: routerA, AccepterProjectID: "pb", CreatedBy: "ua"}
-	_ = e.st.CreatePeering(ctx, q)
-	if b, err := e.st.AllocateBlock(ctx, q.ID); err != nil || b != netip.MustParsePrefix("100.64.0.0/29") {
-		t.Fatalf("block not freed: %v %v", b, err)
+	// The block is free again: the next allocation gets the same /29.
+	if b := e.holdBlock(t); b != netip.MustParsePrefix("100.64.0.0/29") {
+		t.Fatalf("block not freed, next allocation got %v", b)
 	}
 }
 
@@ -125,11 +122,7 @@ func TestProvisionPoolExhausted(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	for i := 0; i < 32; i++ { // hold every block of the /24
-		q := &model.Peering{Name: "q", RequesterProjectID: "pa", RequesterRouterID: routerA, AccepterProjectID: "pb", CreatedBy: "ua"}
-		_ = e.st.CreatePeering(ctx, q)
-		if _, err := e.st.AllocateBlock(ctx, q.ID); err != nil {
-			t.Fatal(err)
-		}
+		e.holdBlock(t)
 	}
 	p := e.accepted(t)
 	_ = e.r.WorkOnce(ctx)

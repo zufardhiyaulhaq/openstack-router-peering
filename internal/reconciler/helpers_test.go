@@ -2,6 +2,7 @@ package reconciler
 
 import (
 	"context"
+	"fmt"
 	"net/netip"
 	"testing"
 	"time"
@@ -91,4 +92,29 @@ func (e *env) get(t *testing.T, id string) model.Peering {
 		t.Fatal(err)
 	}
 	return p
+}
+
+var holderRouter int
+
+// holdBlock allocates a transit block to a separate, claimed peering so the pool has one block fewer.
+func (e *env) holdBlock(t *testing.T) netip.Prefix {
+	t.Helper()
+	ctx := context.Background()
+	holderRouter++
+	p := &model.Peering{Name: "holder", RequesterProjectID: "pa", RequesterRouterID: routerA, AccepterProjectID: "pb", CreatedBy: "ua"}
+	if err := e.st.CreatePeering(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	rb := fmt.Sprintf("eeeeeeee-0000-0000-0000-%012d", holderRouter)
+	if _, err := e.st.Transition(ctx, p.ID, []model.Status{model.StatusPendingAcceptance}, model.StatusProvisioning, store.Patch{AccepterRouterID: &rb}, model.Event{Action: model.ActionAccepted}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.st.ClaimWork(ctx, "holder", 1000, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	b, err := e.st.AllocateBlock(ctx, p.ID, "holder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

@@ -140,10 +140,16 @@ func (r *Reconciler) SweepOnce(ctx context.Context) error {
 	return nil
 }
 
-// PoolScanOnce seeds the pool and reserves blocks that overlap any existing subnet (spec §6.3).
+// PoolScanOnce seeds the pool, frees blocks leaked by terminal peerings, and reserves blocks that overlap
+// any existing subnet (spec §6.3).
 func (r *Reconciler) PoolScanOnce(ctx context.Context) error {
 	if _, err := r.Store.SeedBlocks(ctx, r.Cfg.TransitPool); err != nil {
 		return err
+	}
+	if n, err := r.Store.FreeTerminalBlocks(ctx); err != nil {
+		return err
+	} else if n > 0 {
+		r.log().Warn("freed transit blocks held by finished peerings", "count", n)
 	}
 	used, err := r.Neutron.ListAllSubnetCIDRs(ctx)
 	if err != nil {
