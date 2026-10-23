@@ -71,6 +71,11 @@ make build
 
 The end-to-end suite in `test/e2e/` runs against a real cloud; see its README.
 
+CI (`.github/workflows/ci.yml`) runs vet and every test against Postgres on each push and PR. Each push
+to `main` publishes `ghcr.io/zufardhiyaulhaq/router-peering` (amd64 + arm64) as `:latest` and
+`:sha-<short>`; a `vX.Y.Z` tag also publishes `:X.Y.Z` and `:X.Y`. Pin a `sha-` or version tag in
+production rather than `:latest`.
+
 ## Before the first production use
 
 - Confirm the transit pool does not overlap anything in your cloud (step 1).
