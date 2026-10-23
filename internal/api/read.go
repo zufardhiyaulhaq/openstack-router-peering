@@ -101,7 +101,12 @@ func (a *API) events(w http.ResponseWriter, r *http.Request, c caller) {
 	}
 	out := make([]eventView, 0, len(evs))
 	for _, e := range evs {
-		out = append(out, eventView{At: e.At, Action: e.Action, ActorUserID: e.ActorUserID, ActorProjectID: e.ActorProjectID, Detail: e.Detail})
+		v := eventView{At: e.At, Action: e.Action, Detail: e.Detail}
+		// Each side sees who acted only for its own project's events; the cloud admin sees all.
+		if c.CloudAdmin || e.ActorProjectID == c.ProjectID {
+			v.ActorUserID, v.ActorProjectID = e.ActorUserID, e.ActorProjectID
+		}
+		out = append(out, v)
 	}
 	writeJSON(w, http.StatusOK, out)
 }

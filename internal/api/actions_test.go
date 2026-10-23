@@ -134,17 +134,15 @@ func TestAcceptRacesCancel(t *testing.T) {
 	go func() { defer wg.Done(); codes[0] = e.accept(t, v.ID, "tok-b", routerB, nil) }()
 	go func() { defer wg.Done(); codes[1] = e.do(t, "DELETE", "/v1/peerings/"+v.ID, "tok-a", nil, nil) }()
 	wg.Wait()
-	ok, conflict := 0, 0
-	for _, c := range codes {
-		switch {
-		case c >= 200 && c < 300:
-			ok++
-		case c == 409:
-			conflict++
-		}
-	}
-	if ok != 1 || conflict != 1 {
-		t.Fatalf("codes %v", codes)
+	// Valid outcomes: the cancel won (accept 409, cancelled); the accept won and the cancel lost
+	// (202, 409, provisioning); or the accept won and the DELETE, arriving after it, started a normal
+	// delete (202, 202, deleting). Never both a cancel and an accept.
+	switch st := e.status(t, v.ID); {
+	case codes[1] == 200 && codes[0] == 409 && st == model.StatusCancelled:
+	case codes[0] == 202 && codes[1] == 409 && st == model.StatusProvisioning:
+	case codes[0] == 202 && codes[1] == 202 && st == model.StatusDeleting:
+	default:
+		t.Fatalf("inconsistent outcome: accept %d, delete %d, status %s", codes[0], codes[1], st)
 	}
 }
 
@@ -228,5 +226,29 @@ func TestDeleteMatrix(t *testing.T) {
 				t.Fatalf("status %s, want %s", got, c.want)
 			}
 		})
+	}
+}
+
+func TestEventsHideOtherSideActor(t *testing.T) {
+	e := newTEnv(t)
+	v := e.create(t)
+	e.do(t, "POST", "/v1/peerings/"+v.ID+"/reject", "tok-b", nil, nil)
+	var evs []map[string]any
+	if code := e.do(t, "GET", "/v1/peerings/"+v.ID+"/events", "tok-a", nil, &evs); code != 200 || len(evs) != 2 {
+		t.Fatalf("code %d events %v", code, evs)
+	}
+	if evs[0]["actor_user_id"] != "ua" {
+		t.Fatalf("own event lost its actor: %v", evs[0])
+	}
+	if _, ok := evs[1]["actor_user_id"]; ok || evs[1]["action"] != model.ActionRejected {
+		t.Fatalf("requester sees the accepter's user: %v", evs[1])
+	}
+	if _, ok := evs[1]["actor_project_id"]; ok {
+		t.Fatalf("requester sees the accepter's actor project: %v", evs[1])
+	}
+	var admin []map[string]any
+	e.do(t, "GET", "/v1/peerings/"+v.ID+"/events", "tok-admin", nil, &admin)
+	if admin[1]["actor_user_id"] != "ub" {
+		t.Fatalf("cloud admin must see every actor: %v", admin[1])
 	}
 }
