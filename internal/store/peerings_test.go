@@ -204,3 +204,26 @@ func TestSetWarnings(t *testing.T) {
 		t.Fatalf("not cleared: %v", got.Warnings)
 	}
 }
+
+func TestListLiveByRouter(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	rb := routerB
+	p := mustCreate(t, s, newPending("pa", "pb"))
+	mustCreate(t, s, newPending("pa", "pc")) // pending: no peer router yet, not listed
+	if _, err := s.Transition(ctx, p.ID, []model.Status{model.StatusPendingAcceptance}, model.StatusProvisioning, Patch{AccepterRouterID: &rb}, model.Event{Action: model.ActionAccepted}); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range []string{routerA, routerB} {
+		got, err := s.ListLiveByRouter(ctx, r)
+		if err != nil || len(got) != 1 || got[0].ID != p.ID {
+			t.Fatalf("router %s: %v err %v", r, got, err)
+		}
+	}
+	if _, err := s.Transition(ctx, p.ID, []model.Status{model.StatusProvisioning}, model.StatusDeleted, Patch{}, model.Event{Action: model.ActionDeleted}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.ListLiveByRouter(ctx, routerA); len(got) != 0 {
+		t.Fatalf("terminal peering listed: %v", got)
+	}
+}

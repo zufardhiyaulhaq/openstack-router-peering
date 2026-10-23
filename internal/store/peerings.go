@@ -357,3 +357,14 @@ func (s *Store) SetWarnings(ctx context.Context, id string, warnings []string) e
 	_, err := s.pool.Exec(ctx, `UPDATE peerings SET warnings = $2::jsonb, updated_at = now() WHERE id = $1`, id, string(b))
 	return err
 }
+
+// ListLiveByRouter returns accepted, non-terminal peerings with routerID on either side.
+func (s *Store) ListLiveByRouter(ctx context.Context, routerID string) ([]model.Peering, error) {
+	rows, err := s.pool.Query(ctx, "SELECT "+peeringCols+` FROM peerings
+		WHERE (requester_router_id = $1 OR accepter_router_id = $1) AND accepter_router_id IS NOT NULL
+		  AND NOT (status::text = ANY($2::text[])) ORDER BY created_at, id`, routerID, statusTexts(model.TerminalStatuses))
+	if err != nil {
+		return nil, err
+	}
+	return scanAll(rows)
+}
