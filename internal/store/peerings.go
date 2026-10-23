@@ -347,3 +347,13 @@ func (s *Store) LastAction(ctx context.Context, peeringID string, skip ...string
 	}
 	return a, err
 }
+
+// SetWarnings replaces a peering's warnings without changing its status.
+func (s *Store) SetWarnings(ctx context.Context, id string, warnings []string) error {
+	if warnings == nil {
+		warnings = []string{}
+	}
+	b, _ := json.Marshal(warnings)
+	_, err := s.pool.Exec(ctx, `UPDATE peerings SET warnings = $2::jsonb, updated_at = now() WHERE id = $1`, id, string(b))
+	return err
+}

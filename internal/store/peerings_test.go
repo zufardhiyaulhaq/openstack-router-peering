@@ -185,3 +185,22 @@ func TestCountNonTerminal(t *testing.T) {
 		t.Fatalf("ListByStatus = %+v", byStatus)
 	}
 }
+
+func TestSetWarnings(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	p := mustCreate(t, s, newPending("pa", "pb"))
+	if err := s.SetWarnings(ctx, p.ID, []string{"x overlaps"}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetPeering(ctx, p.ID)
+	if len(got.Warnings) != 1 || got.Warnings[0] != "x overlaps" || got.Status != model.StatusPendingAcceptance {
+		t.Fatalf("got %+v", got)
+	}
+	if err := s.SetWarnings(ctx, p.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GetPeering(ctx, p.ID); len(got.Warnings) != 0 {
+		t.Fatalf("not cleared: %v", got.Warnings)
+	}
+}

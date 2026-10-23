@@ -19,9 +19,17 @@ func gone(err error) error {
 	return err
 }
 
-// removeAll deletes every Neutron object of p (spec §7.3 steps 1-4) and frees its block.
-// It returns an error wrapping neutron.ErrInUseByRoute while a user route still uses a next hop.
+// removeAll deletes every Neutron object of p (spec §7.3 steps 1-4) and then frees its block.
+// It returns *routeBlocked while a user route still uses a next hop.
 func (r *Reconciler) removeAll(ctx context.Context, p model.Peering) error {
+	if err := r.removeNeutron(ctx, p); err != nil {
+		return err
+	}
+	return r.Store.FreeBlock(ctx, p.ID)
+}
+
+// removeNeutron deletes p's router interfaces, ports, subnet and network. Missing objects count as deleted.
+func (r *Reconciler) removeNeutron(ctx context.Context, p model.Peering) error {
 	// A route on router B towards A uses A's IP as next hop, and the reverse.
 	for _, s := range []struct {
 		router, port string
@@ -67,11 +75,9 @@ func (r *Reconciler) removeAll(ctx context.Context, p model.Peering) error {
 		netID = n.ID
 	}
 	if netID != "" {
-		if err := gone(r.Neutron.DeleteNetwork(ctx, netID)); err != nil {
-			return err
-		}
+		return gone(r.Neutron.DeleteNetwork(ctx, netID))
 	}
-	return r.Store.FreeBlock(ctx, p.ID)
+	return nil
 }
 
 // routeBlocked: a user route on router still points at nexthop, so Neutron refuses to remove the interface.
