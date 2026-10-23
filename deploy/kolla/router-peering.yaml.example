@@ -1,0 +1,43 @@
+# router-peering configuration. Every value below is the default unless marked "required".
+# Secrets come from env: RP_DATABASE_URL, RP_KEYSTONE_PASSWORD.
+
+listen: ":9797"
+database_url: ""                     # required, or RP_DATABASE_URL
+
+keystone:
+  auth_url: "http://<internal-vip>:5000/v3"   # required
+  username: router-peering
+  # password: from RP_KEYSTONE_PASSWORD
+  project_name: service
+  user_domain_name: Default
+  project_domain_name: Default
+  region: RegionOne
+  interface: internal
+
+cloud_admin_project: admin           # admin role on this project = cloud admin
+transit_pool: 100.64.0.0/16          # split into /29 blocks; must not overlap tenant subnets
+
+roles:
+  request: member
+  accept: member
+  reject: member
+  repair: member
+  delete: member
+  view: reader
+
+max_non_terminal_per_project: 50
+pending_ttl: 168h
+lease: 2m
+orphan_grace: 1h
+token_cache_ttl: 5m
+
+intervals:
+  work: 10s
+  expiry: 1m
+  drift: 5m
+  sweep: 1h
+  pool_scan: 1h
+
+backoff:
+  initial: 5s
+  max: 5m
