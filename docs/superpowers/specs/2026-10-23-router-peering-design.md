@@ -61,7 +61,9 @@ project must not depend on anything cloud-specific.
 - **Neutron**: needs the `router`, `extraroute`, `standard-attr-tag` and `port-security` extensions. Tested on ML2/OVN.
   ML2/OVS should work (same Neutron API) but is not a test target in v1.
 - **Keystone v3** for identity, token validation and the service catalog.
-- **Exposure**: behind the Kolla HAProxy VIP, registered in the Keystone catalog as type `router-peering`.
+- **Exposure**: a plain HTTP server on a configurable port, registered in the Keystone catalog as type
+  `router-peering`. It runs standalone (catalog points at the host) or behind any load balancer; the Kolla
+  HAProxy VIP is the documented HA option, not a requirement.
 
 ## 4. User experience
 
@@ -423,7 +425,7 @@ All files live in the repo under `deploy/kolla/`, as examples for any Kolla clou
 | Images | `router-peering` (API + reconciler) and `horizon-router-peering` (thin layer `FROM` the Kolla Horizon image of the cloud's release). Published by CI. |
 | Postgres | One container on one controller, host volume, nightly `pg_dump` next to the Kolla MariaDB dumps. Not HA in v1. |
 | API + reconciler | One container each per controller (or one combined container), compose file, `restart: always`. |
-| HAProxy | `/etc/kolla/config/haproxy/services.d/router-peering.cfg` with a `listen` block on the internal VIP (and external if enabled), then `kolla-ansible reconfigure --tags haproxy`. |
+| HAProxy (optional) | Only for HA. `/etc/kolla/config/haproxy/services.d/router-peering.cfg` with a `listen` block on the internal VIP (and external if enabled), then `kolla-ansible reconfigure --tags haproxy`. |
 | Port | Configurable. Must avoid Kolla's port list; the default is chosen during implementation. |
 | Keystone | `deploy/kolla/register.sh`: create user `router-peering`, add `admin` on `service`, create service type `router-peering`, create public / internal / admin endpoints. Idempotent. |
 | Horizon | Set `horizon_image` / `horizon_tag` in `globals.yml` to the extended image, then `kolla-ansible deploy --tags horizon`. Rebuild on every OpenStack upgrade. |

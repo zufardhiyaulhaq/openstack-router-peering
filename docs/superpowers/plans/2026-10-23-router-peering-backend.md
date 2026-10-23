@@ -413,9 +413,9 @@
 - `GET /healthz` → 200 always; `GET /readyz` → 200 if `Store.Ping` and a Keystone `GetProject` on the service project both succeed, else 503.
 - Dockerfile: multi-stage `golang:1.23` → `gcr.io/distroless/static`, `ENTRYPOINT ["/router-peering"]`.
 - `docker-compose.yml`: services `postgres` (`postgres:16`, volume `/var/lib/router-peering/pg`), `api` and `reconciler` (same image, `command: [api, --config, /etc/router-peering/router-peering.yaml]`), `restart: always`, `network_mode: host`, env `RP_DATABASE_URL`, `RP_KEYSTONE_PASSWORD` from an `.env` file not in the repo.
-- `haproxy/router-peering.cfg`: a `listen router_peering` block binding `{{ kolla_internal_vip_address }}:9797` with `server` lines per controller `:9797`, `option httpchk GET /healthz`. Comment at top: copy to `/etc/kolla/config/haproxy/services.d/`, then `kolla-ansible reconfigure --tags haproxy`.
+- `haproxy/router-peering.cfg` (**optional**, for HA only; the service runs standalone without it): a `listen router_peering` block binding `{{ kolla_internal_vip_address }}:9797` with `server` lines per controller `:9797`, `option httpchk GET /healthz`. Comment at top: copy to `/etc/kolla/config/haproxy/services.d/`, then `kolla-ansible reconfigure --tags haproxy`.
 - `register.sh`: idempotent (`openstack ... show` before `create`): user `router-peering` (domain Default), role `admin` on project `service`, service `router-peering` type `router-peering`, endpoints public/internal/admin from env `RP_PUBLIC_URL`, `RP_INTERNAL_URL`, region `RP_REGION` (default `RegionOne`).
-- README: what it is, the flow table from spec §4.1, deploy steps in order, the 2 open checks from spec §14.
+- README: what it is, the flow table from spec §4.1, deploy steps in order with **standalone first** (catalog endpoint = `http://<host>:9797`) and the Kolla HAProxy setup as the HA option, the 2 open checks from spec §14. Note whether Kolla templates `services.d` files (check during this task) and write the HAProxy example accordingly.
 
 - [ ] **Step 1:** Write failing test `TestReadyz` (`internal/api`): Ping OK + Keystone OK → 200; Keystone fake failing → 503.
 - [ ] **Step 2–4:** FAIL → implement → PASS.
