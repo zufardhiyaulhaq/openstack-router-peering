@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"time"
 
 	"github.com/gophercloud/gophercloud/v2"
 	gopenstack "github.com/gophercloud/gophercloud/v2/openstack"
@@ -19,9 +21,17 @@ type Clients struct {
 	ServiceProjectID  string
 }
 
+// RequestTimeout bounds every Keystone and Neutron call. It must stay well under the reconciler lease.
+const RequestTimeout = 30 * time.Second
+
 // Connect logs in as the service account (re-authenticating when the token expires).
 func Connect(ctx context.Context, k config.KeystoneConfig) (Clients, error) {
-	provider, err := gopenstack.AuthenticatedClient(ctx, gophercloud.AuthOptions{
+	provider, err := gopenstack.NewClient(k.AuthURL)
+	if err != nil {
+		return Clients{}, err
+	}
+	provider.HTTPClient = http.Client{Timeout: RequestTimeout}
+	err = gopenstack.Authenticate(ctx, provider, gophercloud.AuthOptions{
 		IdentityEndpoint: k.AuthURL,
 		Username:         k.Username,
 		Password:         k.Password,

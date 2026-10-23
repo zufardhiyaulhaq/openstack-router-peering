@@ -68,15 +68,18 @@ func isHard(err error) bool {
 	return k == neutron.KindHard || k == neutron.KindNotFound
 }
 
-// WorkOnce claims due peerings and processes each.
+// WorkOnce processes up to 10 due peerings. It claims one at a time, so a lease never runs out on a
+// row that is still waiting behind a slow one.
 func (r *Reconciler) WorkOnce(ctx context.Context) error {
-	ps, err := r.Store.ClaimWork(ctx, r.Me, 10, r.Cfg.Lease)
-	if err != nil {
-		return err
-	}
-	for _, p := range ps {
-		if err := r.Process(ctx, p); err != nil {
-			r.log().Error("process peering", "id", p.ID, "status", p.Status, "err", err)
+	var done []string // a row retried this round waits for the next round
+	for i := 0; i < 10; i++ {
+		ps, err := r.Store.ClaimWork(ctx, r.Me, 1, r.Cfg.Lease, done...)
+		if err != nil || len(ps) == 0 {
+			return err
+		}
+		done = append(done, ps[0].ID)
+		if err := r.Process(ctx, ps[0]); err != nil {
+			r.log().Error("process peering", "id", ps[0].ID, "status", ps[0].Status, "err", err)
 		}
 	}
 	return nil

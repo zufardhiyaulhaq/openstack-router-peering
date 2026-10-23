@@ -139,3 +139,15 @@ func TestSaveStepAndFinish(t *testing.T) {
 		t.Fatalf("events %+v", evs)
 	}
 }
+
+func TestClaimWorkSkips(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	p := provisioningPeering(t, s, routerB)
+	if got, _ := s.ClaimWork(ctx, "w1", 10, time.Minute, p.ID); len(got) != 0 {
+		t.Fatalf("skipped row was claimed: %v", got)
+	}
+	if got, _ := s.ClaimWork(ctx, "w1", 10, time.Minute); len(got) != 1 {
+		t.Fatal("row not claimable without skip")
+	}
+}

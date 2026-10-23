@@ -44,6 +44,8 @@ type Fake struct {
 	fail     map[string][]error
 	// Now is the clock for network CreatedAt; defaults to time.Now.
 	Now func() time.Time
+	// OnCall, if set, runs at the start of every call that supports FailNext (under the fake's lock).
+	OnCall func(method string)
 }
 
 var _ neutron.Client = (*Fake)(nil)
@@ -72,6 +74,9 @@ func (f *Fake) FailNext(method string, err error) {
 }
 
 func (f *Fake) injected(method string) error {
+	if f.OnCall != nil {
+		f.OnCall(method)
+	}
 	if q := f.fail[method]; len(q) > 0 {
 		f.fail[method] = q[1:]
 		return q[0]

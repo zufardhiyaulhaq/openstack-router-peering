@@ -189,3 +189,45 @@ func TestProvisionIgnoresTenantLookalikes(t *testing.T) {
 		t.Fatal("teardown deleted the tenant's own network")
 	}
 }
+
+func TestWorkOnceClaimsOneAtATime(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	routerB2 := "bbbbbbbb-0000-0000-0000-000000000002"
+	e.nf.AddRouter(routerB2, "pb", netip.MustParsePrefix("10.4.0.0/24"))
+	e.accepted(t)
+	q := &model.Peering{Name: "q", RequesterProjectID: "pa", RequesterRouterID: routerA, AccepterProjectID: "pb", CreatedBy: "ua"}
+	if err := e.st.CreatePeering(ctx, q); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.st.Transition(ctx, q.ID, []model.Status{model.StatusPendingAcceptance}, model.StatusProvisioning, store.Patch{AccepterRouterID: &routerB2}, model.Event{Action: model.ActionAccepted}); err != nil {
+		t.Fatal(err)
+	}
+	maxClaimed := 0
+	e.nf.OnCall = func(method string) {
+		if method != "CreateNetwork" {
+			return
+		}
+		ps, _ := e.st.ListByStatus(ctx, model.StatusProvisioning)
+		n := 0
+		for _, p := range ps {
+			if p.ClaimedBy != "" {
+				n++
+			}
+		}
+		if n > maxClaimed {
+			maxClaimed = n
+		}
+	}
+	if err := e.r.WorkOnce(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if maxClaimed != 1 {
+		t.Fatalf("rows leased at once while working = %d, want 1", maxClaimed)
+	}
+	for _, id := range []string{q.ID} {
+		if got := e.get(t, id); got.Status != model.StatusActive {
+			t.Fatalf("%s: %s", id, got.Status)
+		}
+	}
+}

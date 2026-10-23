@@ -10,14 +10,17 @@ import (
 	"github.com/zufardhiyaulhaq/openstack-router-peering/internal/model"
 )
 
-// ClaimWork leases up to limit due provisioning/deleting peerings to me.
-func (s *Store) ClaimWork(ctx context.Context, me string, limit int, lease time.Duration) ([]model.Peering, error) {
+// ClaimWork leases up to limit due provisioning/deleting peerings to me, skipping the IDs in skip.
+func (s *Store) ClaimWork(ctx context.Context, me string, limit int, lease time.Duration, skip ...string) ([]model.Peering, error) {
+	if skip == nil {
+		skip = []string{}
+	}
 	rows, err := s.pool.Query(ctx, `UPDATE peerings SET claimed_by = $1, claimed_until = now() + $3::interval
 		WHERE id IN (SELECT id FROM peerings
 		             WHERE status IN ('provisioning', 'deleting') AND next_attempt_at <= now()
-		               AND (claimed_until IS NULL OR claimed_until < now())
+		               AND (claimed_until IS NULL OR claimed_until < now()) AND NOT (id = ANY($4::text[]))
 		             ORDER BY next_attempt_at LIMIT $2 FOR UPDATE SKIP LOCKED)
-		RETURNING `+peeringCols, me, limit, lease)
+		RETURNING `+peeringCols, me, limit, lease, skip)
 	if err != nil {
 		return nil, err
 	}
