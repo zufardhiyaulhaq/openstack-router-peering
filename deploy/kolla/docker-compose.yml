@@ -1,0 +1,36 @@
+# router-peering on a Kolla host. Copy this directory to e.g. /opt/router-peering, write .env
+# (RP_DATABASE_URL, RP_KEYSTONE_PASSWORD, POSTGRES_PASSWORD) and router-peering.yaml next to it.
+#
+# Run postgres on ONE host only. api and reconciler may run on several hosts, all pointing at that database.
+#   docker compose up -d                       # all three on this host
+#   docker compose up -d api reconciler        # other hosts
+services:
+  postgres:
+    image: postgres:16
+    restart: always
+    network_mode: host
+    environment:
+      POSTGRES_DB: router_peering
+      POSTGRES_USER: router_peering
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      PGPORT: "5433"                           # Kolla does not use 5433; keep clear of anything on 5432
+    volumes:
+      - /var/lib/router-peering/pg:/var/lib/postgresql/data
+
+  api:
+    image: ${ROUTER_PEERING_IMAGE:-ghcr.io/zufardhiyaulhaq/router-peering:latest}
+    command: [api, --config, /etc/router-peering/router-peering.yaml]
+    restart: always
+    network_mode: host
+    env_file: .env
+    volumes:
+      - ./router-peering.yaml:/etc/router-peering/router-peering.yaml:ro
+
+  reconciler:
+    image: ${ROUTER_PEERING_IMAGE:-ghcr.io/zufardhiyaulhaq/router-peering:latest}
+    command: [reconciler, --config, /etc/router-peering/router-peering.yaml]
+    restart: always
+    network_mode: host
+    env_file: .env
+    volumes:
+      - ./router-peering.yaml:/etc/router-peering/router-peering.yaml:ro
