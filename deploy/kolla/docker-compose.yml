@@ -14,6 +14,9 @@ services:
       POSTGRES_USER: router_peering
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       PGPORT: "5433"                           # Kolla does not use 5433; keep clear of anything on 5432
+    # Listen on loopback only. If api/reconciler run on other hosts, set RP_DB_LISTEN to this host's
+    # internal (api_interface) IP so the database is never reachable on the external interface.
+    command: [postgres, -c, "listen_addresses=${RP_DB_LISTEN:-127.0.0.1}"]
     volumes:
       - /var/lib/router-peering/pg:/var/lib/postgresql/data
 

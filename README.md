@@ -51,9 +51,14 @@ Everything runs as plain containers; Kolla does not manage them.
    `RP_DATABASE_URL=postgres://router_peering:<pw>@127.0.0.1:5433/router_peering?sslmode=disable`,
    `POSTGRES_PASSWORD=<pw>` and `RP_KEYSTONE_PASSWORD=<service user password>`.
 4. **Start (standalone).** `docker compose up -d`. The catalog endpoints from step 2 point at this host.
-5. **Optional, for HA.** Run `api` and `reconciler` on more hosts against the same database, copy
-   `haproxy/router-peering.cfg` to `/etc/kolla/config/haproxy/services.d/`, run
-   `kolla-ansible reconfigure --tags haproxy`, and point the catalog endpoints at `http://<VIP>:9797`.
+5. **Optional, for HA.** Run `api` and `reconciler` on more hosts against the same database.
+   - **First** set `listen: "<host api_interface IP>:9797"` in `router-peering.yaml` on every api host
+     and restart it. With the default `:9797`, HAProxy cannot bind `<VIP>:9797` and stops, taking
+     every OpenStack API down.
+   - Set `RP_DB_LISTEN=<db host internal IP>` on the database host so remote api/reconciler containers
+     can reach Postgres; it listens on loopback only by default.
+   - Copy `haproxy/router-peering.cfg` to `/etc/kolla/config/haproxy/services.d/`, run
+     `kolla-ansible reconfigure --tags haproxy`, and point the catalog endpoints at `http://<VIP>:9797`.
 6. **Back up** with a nightly `pg_dump` of `router_peering`.
 
 ## Development

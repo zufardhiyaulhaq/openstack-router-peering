@@ -1,6 +1,9 @@
 # router-peering configuration. Every value below is the default unless marked "required".
 # Secrets come from env: RP_DATABASE_URL, RP_KEYSTONE_PASSWORD.
 
+# Standalone: ":9797" is fine. Behind Kolla HAProxy (optional HA): set this host's api_interface IP,
+# e.g. "10.0.0.11:9797". HAProxy binds <VIP>:9797 on the same host, and Linux refuses that bind
+# while the API holds the wildcard ":9797" — which would stop HAProxy and every OpenStack API with it.
 listen: ":9797"
 database_url: ""                     # required, or RP_DATABASE_URL
 
