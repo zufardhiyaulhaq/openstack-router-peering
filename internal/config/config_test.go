@@ -70,11 +70,11 @@ func TestValidateRejects(t *testing.T) {
 		t.Fatalf("valid config rejected: %v", err)
 	}
 	cases := map[string]func(*Config){
-		"pool /30":     func(c *Config) { c.TransitPool = netip.MustParsePrefix("10.0.0.0/30") },
-		"pool ipv6":    func(c *Config) { c.TransitPool = netip.MustParsePrefix("fd00::/64") },
-		"no db url":    func(c *Config) { c.DatabaseURL = "" },
-		"zero limit":   func(c *Config) { c.MaxNonTerminalPerProject = 0 },
-		"empty role":   func(c *Config) { c.Roles.Accept = "" },
+		"pool /30":   func(c *Config) { c.TransitPool = netip.MustParsePrefix("10.0.0.0/30") },
+		"pool ipv6":  func(c *Config) { c.TransitPool = netip.MustParsePrefix("fd00::/64") },
+		"no db url":  func(c *Config) { c.DatabaseURL = "" },
+		"zero limit": func(c *Config) { c.MaxNonTerminalPerProject = 0 },
+		"empty role": func(c *Config) { c.Roles.Accept = "" },
 	}
 	for name, mut := range cases {
 		c := base
