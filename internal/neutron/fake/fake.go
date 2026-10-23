@@ -101,7 +101,8 @@ func (f *Fake) AddRouterSubnet(id string, cidr netip.Prefix) {
 	f.routers[id].cidrs = append(f.routers[id].cidrs, cidr)
 }
 
-// SetRoute adds a static route on router via nexthop.
+// SetRoute adds a static route on router via nexthop. Like Neutron, it blocks removing the router
+// interface whose subnet contains nexthop.
 func (f *Fake) SetRoute(routerID string, nexthop netip.Addr) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -285,7 +286,11 @@ func (f *Fake) RemoveRouterInterface(_ context.Context, routerID, portID string)
 	if !ok || p.DeviceID != routerID {
 		return &neutron.APIError{Code: 404, Type: "RouterInterfaceNotFound", Message: "Router " + routerID + " does not have an interface with id " + portID}
 	}
-	if r.routes[p.IP] {
+	cidr := f.subnets[p.subnet].cidr
+	for nexthop := range r.routes {
+		if !cidr.Contains(nexthop) {
+			continue
+		}
 		return &neutron.APIError{Code: 409, Type: "RouterInterfaceInUseByRoute", Message: fmt.Sprintf("Router interface for subnet %s on router %s cannot be deleted, as it is required by one or more routes.", p.subnet, routerID)}
 	}
 	delete(f.ports, portID)
