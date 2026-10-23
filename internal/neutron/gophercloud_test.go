@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"net/url"
 	"reflect"
 	"strings"
 	"sync"
@@ -159,12 +160,14 @@ func TestGetRouterExcludesTransit(t *testing.T) {
 			writeJSON(w, 200, map[string]any{"ports": []map[string]any{
 				{"id": "p1", "device_owner": "network:router_interface", "fixed_ips": []map[string]any{{"subnet_id": "s1", "ip_address": "10.0.0.1"}}},
 				{"id": "p2", "device_owner": "network:router_interface", "fixed_ips": []map[string]any{{"subnet_id": "s2", "ip_address": "100.64.0.9"}}},
+				{"id": "p4", "device_owner": "network:router_interface", "fixed_ips": []map[string]any{{"subnet_id": "s4", "ip_address": "10.9.0.1"}}},
 				{"id": "p3", "device_owner": "network:router_gateway", "fixed_ips": []map[string]any{{"subnet_id": "s3", "ip_address": "198.51.100.5"}}},
 			}})
 		case "/v2.0/subnets":
 			writeJSON(w, 200, map[string]any{"subnets": []map[string]any{
-				{"id": "s1", "name": "app", "cidr": "10.0.0.0/24", "ip_version": 4},
-				{"id": "s2", "name": "rpx-abc", "cidr": "100.64.0.8/29", "ip_version": 4},
+				{"id": "s1", "name": "app", "cidr": "10.0.0.0/24", "ip_version": 4, "project_id": "pa"},
+				{"id": "s2", "name": "rpx-abc", "cidr": "100.64.0.8/29", "ip_version": 4, "project_id": "svc-project"},
+				{"id": "s4", "name": "rpx-sneaky", "cidr": "10.9.0.0/24", "ip_version": 4, "project_id": "pa"},
 			}})
 		default:
 			t.Errorf("unexpected %s", r.URL.Path)
@@ -174,7 +177,9 @@ func TestGetRouterExcludesTransit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rt.ProjectID != "pa" || !reflect.DeepEqual(rt.SubnetCIDRs, []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")}) {
+	// Transit subnets are recognised by owner (the service project), not by name: a tenant subnet named rpx-* still counts.
+	want := []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24"), netip.MustParsePrefix("10.9.0.0/24")}
+	if rt.ProjectID != "pa" || !reflect.DeepEqual(rt.SubnetCIDRs, want) {
 		t.Fatalf("router %+v", rt)
 	}
 }
@@ -189,5 +194,41 @@ func TestGetRouterNotFound(t *testing.T) {
 	})
 	if _, err := n.GetRouter(context.Background(), "r9"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}
+
+func TestLookupsScopedToServiceProject(t *testing.T) {
+	seen := map[string]url.Values{}
+	n := newServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v2.0/extensions" {
+			writeJSON(w, 200, extensions(true))
+			return
+		}
+		seen[r.URL.Path] = r.URL.Query()
+		switch r.URL.Path {
+		case "/v2.0/networks":
+			writeJSON(w, 200, map[string]any{"networks": []map[string]any{{"id": "n1", "name": "rpx-1"}}})
+		case "/v2.0/subnets":
+			writeJSON(w, 200, map[string]any{"subnets": []map[string]any{{"id": "s1", "name": "rpx-1", "cidr": "10.0.0.0/24", "ip_version": 4, "project_id": "pa"}}})
+		case "/v2.0/ports":
+			writeJSON(w, 200, map[string]any{"ports": []map[string]any{}})
+		}
+	})
+	ctx := context.Background()
+	_, _ = n.FindNetworkByName(ctx, "rpx-1")
+	if q := seen["/v2.0/networks"]; q.Get("project_id") != "svc-project" || q.Get("name") != "rpx-1" {
+		t.Errorf("network lookup query %v", q)
+	}
+	_, _ = n.FindSubnetByName(ctx, "rpx-1")
+	if q := seen["/v2.0/subnets"]; q.Get("project_id") != "svc-project" {
+		t.Errorf("subnet lookup query %v", q)
+	}
+	_, _ = n.ListNetworkPorts(ctx, "n1")
+	if q := seen["/v2.0/ports"]; q.Get("network_id") != "n1" || q.Get("tags") != "" {
+		t.Errorf("port listing query %v", q)
+	}
+	cidrs, _ := n.ListAllSubnetCIDRs(ctx)
+	if len(cidrs) != 1 {
+		t.Errorf("tenant subnet named rpx-* must count for the pool scan: %v", cidrs)
 	}
 }

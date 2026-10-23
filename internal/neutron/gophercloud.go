@@ -127,6 +127,7 @@ func (p rawPort) port() Port {
 
 type rawSubnet struct {
 	ID        string `json:"id"`
+	ProjectID string `json:"project_id"`
 	Name      string `json:"name"`
 	CIDR      string `json:"cidr"`
 	IPVersion int    `json:"ip_version"`
@@ -175,7 +176,7 @@ func (n *Neutron) GetRouter(ctx context.Context, id string) (Router, error) {
 		return out, err
 	}
 	for _, s := range subnets.Subnets {
-		if s.IPVersion != 4 || strings.HasPrefix(s.Name, TransitPrefix) {
+		if s.IPVersion != 4 || s.ProjectID == n.serviceProjectID {
 			continue
 		}
 		if p, err := netip.ParsePrefix(s.CIDR); err == nil {
@@ -263,7 +264,7 @@ func (n *Neutron) FindNetworkByName(ctx context.Context, name string) (Network, 
 	var r struct {
 		Networks []rawNetwork `json:"networks"`
 	}
-	if err := n.get(ctx, n.query("networks", url.Values{"name": {name}}), &r); err != nil {
+	if err := n.get(ctx, n.query("networks", url.Values{"name": {name}, "project_id": {n.serviceProjectID}}), &r); err != nil {
 		return Network{}, err
 	}
 	if len(r.Networks) == 0 {
@@ -277,7 +278,7 @@ func (n *Neutron) FindSubnetByName(ctx context.Context, name string) (string, er
 	var r struct {
 		Subnets []rawSubnet `json:"subnets"`
 	}
-	if err := n.get(ctx, n.query("subnets", url.Values{"name": {name}}), &r); err != nil {
+	if err := n.get(ctx, n.query("subnets", url.Values{"name": {name}, "project_id": {n.serviceProjectID}}), &r); err != nil {
 		return "", err
 	}
 	if len(r.Subnets) == 0 {
@@ -306,8 +307,8 @@ func (n *Neutron) DeleteNetwork(ctx context.Context, id string) error {
 	return n.del(ctx, n.sc.ServiceURL("networks", id))
 }
 
-func (n *Neutron) ListPortsByTag(ctx context.Context, tag string) ([]Port, error) {
-	return n.listPorts(ctx, url.Values{"tags": {tag}})
+func (n *Neutron) ListNetworkPorts(ctx context.Context, networkID string) ([]Port, error) {
+	return n.listPorts(ctx, url.Values{"network_id": {networkID}})
 }
 
 func (n *Neutron) ListOwnNetworks(ctx context.Context) ([]Network, error) {
@@ -324,7 +325,7 @@ func (n *Neutron) ListOwnNetworks(ctx context.Context) ([]Network, error) {
 	return out, nil
 }
 
-// ListAllSubnetCIDRs returns every IPv4 subnet in the cloud except the service's own rpx-* subnets.
+// ListAllSubnetCIDRs returns every IPv4 subnet in the cloud except the service project's own.
 func (n *Neutron) ListAllSubnetCIDRs(ctx context.Context) ([]netip.Prefix, error) {
 	var r struct {
 		Subnets []rawSubnet `json:"subnets"`
@@ -334,7 +335,7 @@ func (n *Neutron) ListAllSubnetCIDRs(ctx context.Context) ([]netip.Prefix, error
 	}
 	var out []netip.Prefix
 	for _, s := range r.Subnets {
-		if strings.HasPrefix(s.Name, TransitPrefix) {
+		if s.ProjectID == n.serviceProjectID {
 			continue
 		}
 		if p, err := netip.ParsePrefix(s.CIDR); err == nil {

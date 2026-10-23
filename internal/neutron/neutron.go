@@ -68,7 +68,7 @@ func KindOf(err error) Kind {
 	return KindTransient
 }
 
-// Router is a router with the IPv4 subnets on its interfaces (transit rpx-* subnets excluded).
+// Router is a router with the IPv4 subnets on its interfaces. Transit subnets (owned by the service project) are excluded.
 type Router struct {
 	ID, ProjectID string
 	SubnetCIDRs   []netip.Prefix
@@ -95,6 +95,7 @@ type Client interface {
 	CreatePort(ctx context.Context, networkID, subnetID, projectID, name, tag string, ip netip.Addr) (string, error)
 	GetPort(ctx context.Context, id string) (Port, error)
 	FindPortByIP(ctx context.Context, networkID string, ip netip.Addr) (Port, error)
+	// FindNetworkByName and FindSubnetByName only look in the service project, never at tenant objects.
 	FindNetworkByName(ctx context.Context, name string) (Network, error)
 	FindSubnetByName(ctx context.Context, name string) (string, error)
 	AddRouterInterface(ctx context.Context, routerID, portID string) error
@@ -102,8 +103,9 @@ type Client interface {
 	DeletePort(ctx context.Context, id string) error
 	DeleteSubnet(ctx context.Context, id string) error
 	DeleteNetwork(ctx context.Context, id string) error
-	ListPortsByTag(ctx context.Context, tag string) ([]Port, error)
+	ListNetworkPorts(ctx context.Context, networkID string) ([]Port, error)
 	ListOwnNetworks(ctx context.Context) ([]Network, error)
+	// ListAllSubnetCIDRs returns every IPv4 subnet in the cloud except the service project's own.
 	ListAllSubnetCIDRs(ctx context.Context) ([]netip.Prefix, error)
 }
 

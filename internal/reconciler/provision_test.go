@@ -171,3 +171,28 @@ func TestBackoff(t *testing.T) {
 		}
 	}
 }
+
+func TestProvisionIgnoresTenantLookalikes(t *testing.T) {
+	e := newEnv(t)
+	p := e.accepted(t)
+	ctx := context.Background()
+	// Project A knows the peering ID before B accepts and builds its own network and subnet with that name.
+	tenantNet := e.nf.AddTenantNetwork(p.ID, "pa")
+	e.nf.AddTenantSubnet(tenantNet, p.ID, "pa", netip.MustParsePrefix("100.64.0.0/29"))
+	got := e.drain(t, p.ID, 3)
+	if got.Status != model.StatusActive || got.TransitNetworkID == tenantNet {
+		t.Fatalf("status %s transit network %s (tenant's is %s)", got.Status, got.TransitNetworkID, tenantNet)
+	}
+	if port, _ := e.nf.GetPort(ctx, got.AccepterPortID); port.NetworkID != got.TransitNetworkID {
+		t.Fatalf("B's port landed on %s", port.NetworkID)
+	}
+	if _, err := e.st.Transition(ctx, p.ID, []model.Status{model.StatusActive}, model.StatusDeleting, store.Patch{}, model.Event{Action: model.ActionDeleteRequested}); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.drain(t, p.ID, 3); got.Status != model.StatusDeleted {
+		t.Fatalf("delete: %s", got.Status)
+	}
+	if !e.nf.HasNetwork(tenantNet) {
+		t.Fatal("teardown deleted the tenant's own network")
+	}
+}

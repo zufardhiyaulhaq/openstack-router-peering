@@ -46,33 +46,35 @@ func (r *Reconciler) removeNeutron(ctx context.Context, p model.Peering) error {
 			return err
 		}
 	}
-	ports, err := r.Neutron.ListPortsByTag(ctx, model.Tag(p.ID))
-	if err != nil {
-		return err
+	netID := p.TransitNetworkID
+	if netID == "" {
+		n, err := r.Neutron.FindNetworkByName(ctx, p.ID) // service project only
+		if gone(err) != nil {
+			return err
+		}
+		netID = n.ID
 	}
-	for _, port := range ports {
-		if port.DeviceID != "" && port.DeviceOwner != "" {
-			if err := gone(r.Neutron.RemoveRouterInterface(ctx, port.DeviceID, port.ID)); err != nil {
+	if netID != "" {
+		ports, err := r.Neutron.ListNetworkPorts(ctx, netID)
+		if err != nil {
+			return err
+		}
+		for _, port := range ports {
+			if port.DeviceID != "" && port.DeviceOwner != "" {
+				if err := gone(r.Neutron.RemoveRouterInterface(ctx, port.DeviceID, port.ID)); err != nil {
+					return err
+				}
+				continue
+			}
+			if err := gone(r.Neutron.DeletePort(ctx, port.ID)); err != nil {
 				return err
 			}
-			continue
-		}
-		if err := gone(r.Neutron.DeletePort(ctx, port.ID)); err != nil {
-			return err
 		}
 	}
 	if p.TransitSubnetID != "" {
 		if err := gone(r.Neutron.DeleteSubnet(ctx, p.TransitSubnetID)); err != nil {
 			return err
 		}
-	}
-	netID := p.TransitNetworkID
-	if netID == "" {
-		n, err := r.Neutron.FindNetworkByName(ctx, p.ID)
-		if gone(err) != nil {
-			return err
-		}
-		netID = n.ID
 	}
 	if netID != "" {
 		return gone(r.Neutron.DeleteNetwork(ctx, netID))

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/netip"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -20,8 +19,8 @@ type router struct {
 }
 
 type subnet struct {
-	id, network, name, tag string
-	cidr                   netip.Prefix
+	id, network, name, tag, project string
+	cidr                            netip.Prefix
 }
 
 type network struct {
@@ -125,11 +124,50 @@ func (f *Fake) AddNetwork(name string, created time.Time) string {
 	return id
 }
 
-// Counts returns the number of networks, subnets and ports.
+// svcProject owns everything the service creates.
+const svcProject = "svc"
+
+// AddTenantNetwork creates a network owned by a tenant project (e.g. a lookalike named rpx-<id>).
+func (f *Fake) AddTenantNetwork(name, project string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	id := f.id("network")
+	f.networks[id] = &network{Network: neutron.Network{ID: id, Name: name, CreatedAt: f.Now()}, project: project}
+	return id
+}
+
+// AddTenantSubnet creates a subnet owned by a tenant project.
+func (f *Fake) AddTenantSubnet(networkID, name, project string, cidr netip.Prefix) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	id := f.id("subnet")
+	f.subnets[id] = &subnet{id: id, network: networkID, name: name, project: project, cidr: cidr}
+	return id
+}
+
+// HasNetwork reports whether a network exists.
+func (f *Fake) HasNetwork(id string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, ok := f.networks[id]
+	return ok
+}
+
+// Counts returns the number of networks, subnets and ports owned by the service project.
 func (f *Fake) Counts() (networks, subnets, ports int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return len(f.networks), len(f.subnets), len(f.ports)
+	for _, n := range f.networks {
+		if n.project == svcProject {
+			networks++
+		}
+	}
+	for _, s := range f.subnets {
+		if s.project == svcProject {
+			subnets++
+		}
+	}
+	return networks, subnets, len(f.ports)
 }
 
 // RemovePortDirect deletes a port as a tenant would with remove_router_interface.
@@ -173,7 +211,7 @@ func (f *Fake) CreateSubnet(_ context.Context, networkID, name, tag string, cidr
 		return "", notFound("Network", networkID)
 	}
 	id := f.id("subnet")
-	f.subnets[id] = &subnet{id: id, network: networkID, name: name, tag: tag, cidr: cidr}
+	f.subnets[id] = &subnet{id: id, network: networkID, name: name, tag: tag, cidr: cidr, project: svcProject}
 	return id, nil
 }
 
@@ -224,7 +262,7 @@ func (f *Fake) FindNetworkByName(_ context.Context, name string) (neutron.Networ
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, n := range f.networks {
-		if n.Name == name {
+		if n.Name == name && n.project == svcProject {
 			return n.Network, nil
 		}
 	}
@@ -235,7 +273,7 @@ func (f *Fake) FindSubnetByName(_ context.Context, name string) (string, error) 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, s := range f.subnets {
-		if s.name == name {
+		if s.name == name && s.project == svcProject {
 			return s.id, nil
 		}
 	}
@@ -346,12 +384,12 @@ func (f *Fake) DeleteNetwork(_ context.Context, id string) error {
 	return nil
 }
 
-func (f *Fake) ListPortsByTag(_ context.Context, tag string) ([]neutron.Port, error) {
+func (f *Fake) ListNetworkPorts(_ context.Context, networkID string) ([]neutron.Port, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var out []neutron.Port
 	for _, p := range f.ports {
-		if p.tag == tag {
+		if p.NetworkID == networkID {
 			out = append(out, p.Port)
 		}
 	}
@@ -364,7 +402,9 @@ func (f *Fake) ListOwnNetworks(_ context.Context) ([]neutron.Network, error) {
 	defer f.mu.Unlock()
 	var out []neutron.Network
 	for _, n := range f.networks {
-		out = append(out, n.Network)
+		if n.project == svcProject {
+			out = append(out, n.Network)
+		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil
@@ -378,7 +418,7 @@ func (f *Fake) ListAllSubnetCIDRs(_ context.Context) ([]netip.Prefix, error) {
 		out = append(out, r.cidrs...)
 	}
 	for _, s := range f.subnets {
-		if !strings.HasPrefix(s.name, neutron.TransitPrefix) {
+		if s.project != svcProject {
 			out = append(out, s.cidr)
 		}
 	}
