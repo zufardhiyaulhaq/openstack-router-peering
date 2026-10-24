@@ -147,3 +147,64 @@ class CreateTests(test.TestCase):
     @mock.patch.object(neutron_api, 'router_list', return_value=[])
     def test_create_no_routers(self, router_list):
         self.assertContains(self.client.get(CREATE_URL), 'No routers in this project')
+
+
+ACCEPT_URL = reverse('horizon:project:router_peering:accept', args=[PID])
+REQUESTER = 'a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0'
+
+
+def incoming_pending(**over):
+    p = test.peering(role='accepter', peer_project_id=REQUESTER, peer_project_name='team-a', router_id='')
+    p.update(over)
+    return p
+
+
+class AcceptTests(test.TestCase):
+    @mock.patch.object(api, 'list')
+    def test_accept_link_by_status(self, list_):
+        for table, p, want in [('incoming', incoming_pending(), True),
+                               ('outgoing', test.peering(), False),
+                               ('incoming', incoming_pending(status='active'), False)]:
+            list_.side_effect = by_direction([p] if table == 'outgoing' else [], [p] if table == 'incoming' else [])
+            html = self.client.get(INDEX_URL).content.decode()
+            self.assertEqual(ACCEPT_URL in html, want, '%s %s' % (table, p['status']))
+
+    @mock.patch.object(neutron_api, 'router_list')
+    @mock.patch.object(api, 'get')
+    def test_accept_get_shows_requester(self, get, router_list):
+        get.return_value = incoming_pending()
+        router_list.return_value = self.routers.list()
+        res = self.client.get(ACCEPT_URL)
+        self.assertTemplateUsed(res, 'project/router_peering/accept.html')
+        self.assertContains(res, 'team-a')
+        self.assertContains(res, REQUESTER)
+        self.assertContains(res, self.routers.first().name)
+
+    @mock.patch.object(api, 'accept')
+    @mock.patch.object(neutron_api, 'router_list')
+    @mock.patch.object(api, 'get')
+    def test_accept_post_ok(self, get, router_list, accept):
+        get.return_value = incoming_pending()
+        router_list.return_value = self.routers.list()
+        router = self.routers.first()
+        res = self.client.post(ACCEPT_URL, {'peering_id': PID, 'router_id': router.id})
+        self.assertNoFormErrors(res)
+        self.assertRedirectsNoFollow(res, INDEX_URL)
+        accept.assert_called_once_with(test.IsHttpRequest(), PID, router.id)
+
+    @mock.patch.object(api, 'accept')
+    @mock.patch.object(neutron_api, 'router_list')
+    @mock.patch.object(api, 'get')
+    def test_accept_overlap_message(self, get, router_list, accept):
+        get.return_value = incoming_pending()
+        router_list.return_value = self.routers.list()
+        accept.side_effect = api.APIError(409, 'CIDRs overlap between the 2 sides', ['10.1.0.0/24', '10.2.0.0/24'])
+        res = self.client.post(ACCEPT_URL, {'peering_id': PID, 'router_id': self.routers.first().id})
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, 'CIDRs overlap between the 2 sides: 10.1.0.0/24, 10.2.0.0/24')
+
+    @mock.patch.object(api, 'get')
+    def test_accept_unknown_peering_redirects(self, get):
+        get.side_effect = api.APIError(404, 'peering not found')
+        res = self.client.get(ACCEPT_URL)
+        self.assertRedirectsNoFollow(res, INDEX_URL)

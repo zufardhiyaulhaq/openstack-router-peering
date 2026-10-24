@@ -38,3 +38,28 @@ class CreatePeeringForm(forms.SelfHandlingForm):
             return False
         messages.success(request, _("Peering requested. The other project must accept it."))
         return True
+
+
+class AcceptPeeringForm(forms.SelfHandlingForm):
+    peering_id = forms.CharField(widget=forms.HiddenInput())
+    requester = forms.CharField(label=_("Requested by project"), required=False,
+                                widget=forms.TextInput(attrs={'readonly': 'readonly'}))
+    router_id = forms.ChoiceField(label=_("Your router"),
+                                  help_text=_("The router in this project to connect. Its subnets must not "
+                                              "overlap the requester's."))
+
+    def __init__(self, request, *args, **kwargs):
+        super().__init__(request, *args, **kwargs)
+        self.fields['router_id'].choices = router_choices(request)
+
+    def handle(self, request, data):
+        try:
+            api.accept(request, data['peering_id'], data['router_id'])
+        except api.APIError as e:
+            msg = e.message
+            if e.overlaps:
+                msg = '%s: %s' % (msg, ', '.join(e.overlaps))
+            self.api_error(msg)
+            return False
+        messages.success(request, _("Peering accepted. Building the transit network…"))
+        return True

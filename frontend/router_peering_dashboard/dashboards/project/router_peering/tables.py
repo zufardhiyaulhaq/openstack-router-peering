@@ -32,6 +32,16 @@ class CreatePeering(tables.LinkAction):
     icon = 'plus'
 
 
+class AcceptPeering(tables.LinkAction):
+    name = 'accept'
+    verbose_name = _("Accept")
+    url = 'horizon:project:router_peering:accept'
+    classes = ('ajax-modal', 'btn-primary')
+
+    def allowed(self, request, datum=None):
+        return datum is not None and datum.role == 'accepter' and datum.status == PENDING
+
+
 class RejectPeering(tables.DeleteAction):
     name = 'reject'
     help_text = _("The requester is told the request was rejected. Nothing is built.")
@@ -140,4 +150,4 @@ class IncomingTable(PeeringsTable):
         name = 'incoming'
         verbose_name = _("Incoming")
         table_actions = ()
-        row_actions = (RepairPeering, RejectPeering, DeletePeering)
+        row_actions = (AcceptPeering, RepairPeering, RejectPeering, DeletePeering)
