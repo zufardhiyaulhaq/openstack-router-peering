@@ -8,6 +8,7 @@ deletes them at the end. The 2 subnets must not overlap anything already on thos
 |---|---|
 | `RP_E2E_API_URL` | router-peering API, e.g. `http://<host>:9797` |
 | `RP_E2E_CLOUD_A`, `RP_E2E_CLOUD_B` | `clouds.yaml` entries for a `member` of 2 **different** projects |
+| `RP_E2E_CLOUD_ADMIN` | `clouds.yaml` entry for a cloud admin; used only to detach a peering interface (tenants cannot) |
 | `RP_E2E_IMAGE`, `RP_E2E_FLAVOR` | image and flavor IDs; the image must run cloud-init and have `ping` |
 
 ```bash
@@ -23,4 +24,5 @@ brings it back. Expiry and the orphan sweep are covered by unit tests only.
 
 | Date | Cloud | Result |
 |---|---|---|
-| — | the test cloud | not run yet (needs the VPN, a deploy, and the 2 checks in the main README) |
+| 2026-10-25 | the test cloud 2026.1 ML2/OVN | run 1: every peering `failed` (Neutron rejects `tags` in POST although it advertises `tag-creation`); fixed in `811a7c8` |
+| 2026-10-25 | the test cloud 2026.1 ML2/OVN | run 2: create/accept, ping, delete-blocked, cancel, reject PASS; tenant detach refused with 404 (test assumed it would work), so the test now detaches as admin |

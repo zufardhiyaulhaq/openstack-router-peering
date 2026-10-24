@@ -335,8 +335,12 @@ written, and the reconciler retries with the capped backoff until the route is g
 
 ### 7.4 Drift, `degraded` and repair
 
-A tenant owns its router interface, so it can run `remove_router_interface` on it. Neutron then
-**deletes** the port. The tenant cannot see the transit network, so it cannot recreate the port itself.
+**Verified on the test cloud (2026.1, ML2/OVN, 25/10):** a tenant **cannot** remove its peering interface.
+`remove_router_interface` as the tenant answers `404 NetworkNotFound`, because the transit network
+belongs to the `service` project and is invisible to the tenant. Deleting the port directly is refused
+too, because Neutron only lets a router interface port be removed through the router. So `degraded`
+happens only through an admin action or a Neutron-side fault, and repair is an operator tool rather
+than an everyday user action.
 
 - The drift check marks the peering `degraded` with a reason naming the missing side.
 - The service **does not auto-repair**, because the removal may be deliberate.

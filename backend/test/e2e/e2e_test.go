@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -282,7 +283,7 @@ func TestE2E(t *testing.T) {
 		}
 	})
 
-	t.Run("degraded after manual detach, then repair", func(t *testing.T) {
+	t.Run("tenant cannot detach; admin detach degrades, repair restores", func(t *testing.T) {
 		v := api.request(t, ta, tb)
 		api.call(t, tb, "POST", "/v1/peerings/"+v.ID+"/accept", map[string]string{"router_id": tb.routerID}, nil)
 		api.waitStatus(t, ta, v.ID, "active", 2*time.Minute)
@@ -294,7 +295,21 @@ func TestE2E(t *testing.T) {
 		if len(ports.Ports) != 1 {
 			t.Fatalf("A cannot see its interface port: %v", ports)
 		}
-		put(t, ta.net, ta.net.ServiceURL("routers", ta.routerID, "remove_router_interface"), map[string]string{"port_id": ports.Ports[0].ID})
+		detach := map[string]string{"port_id": ports.Ports[0].ID}
+		detachURL := ta.net.ServiceURL("routers", ta.routerID, "remove_router_interface")
+
+		// Security property: the transit network belongs to the service project, so Neutron refuses the
+		// tenant's own detach (404 NetworkNotFound on 2026.1). A tenant cannot quietly break a peering.
+		_, err = ta.net.Put(context.Background(), detachURL, detach, nil, &gophercloud.RequestOpts{OkCodes: []int{200}})
+		var uc gophercloud.ErrUnexpectedResponseCode
+		if !errors.As(err, &uc) || uc.Actual < 400 || uc.Actual >= 500 {
+			t.Fatalf("tenant detach of the peering interface must be refused with a 4xx, got %v", err)
+		}
+		api.waitStatus(t, ta, v.ID, "active", time.Second)
+
+		// Only an admin (or Neutron itself) can break it; that is what degraded and repair are for.
+		admin := login(t, env(t, "RP_E2E_CLOUD_ADMIN"), "admin", "", "")
+		put(t, admin.net, detachURL, detach)
 		api.waitStatus(t, ta, v.ID, "degraded", 7*time.Minute) // drift runs every 5 min by default
 		if code := api.call(t, ta, "POST", "/v1/peerings/"+v.ID+"/repair", nil, nil); code != 202 {
 			t.Fatalf("repair: %d", code)
