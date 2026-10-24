@@ -23,11 +23,15 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       RP_TEST_DATABASE_URL: postgres://postgres:pw@localhost:5432/postgres?sslmode=disable
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
       - run: go vet ./... && go vet -tags e2e ./...
       - run: go test -count=1 ./...
 
@@ -58,7 +62,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
       - uses: docker/build-push-action@v6
         with:
-          context: .
+          context: backend
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

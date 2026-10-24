@@ -7,6 +7,15 @@ Users add their own routes and security group rules.
 
 Design: [docs/superpowers/specs/2026-10-23-router-peering-design.md](docs/superpowers/specs/2026-10-23-router-peering-design.md).
 
+## Layout
+
+| Path | What |
+|---|---|
+| `backend/` | Go service: API, reconciler, migrations, Dockerfile, unit and e2e tests (`backend/test/e2e`) |
+| `frontend/` | UI (not built yet) |
+| `deploy/` | deploy files; `deploy/kolla/` for Kolla-Ansible clouds |
+| `docs/` | design spec, plans, brainstorm notes |
+
 ## Flow
 
 | # | Who | Action | Status after |
@@ -64,12 +73,13 @@ Everything runs as plain containers; Kolla does not manage them.
 ## Development
 
 ```bash
+cd backend
 make test       # unit tests (DB tests skip)
 make test-db    # starts postgres:16 in Docker and runs every test
 make build
 ```
 
-The end-to-end suite in `test/e2e/` runs against a real cloud; see its README.
+The end-to-end suite in `backend/test/e2e/` runs against a real cloud; see its README.
 
 CI (`.github/workflows/ci.yml`) runs vet and every test against Postgres on each push and PR. Each push
 to `main` publishes `ghcr.io/zufardhiyaulhaq/router-peering` (amd64 + arm64) as `:latest` and

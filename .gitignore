@@ -1,4 +1,4 @@
 .superpowers/
-/bin/
-/router-peering
+backend/bin/
 deploy/kolla/.env
+.env
