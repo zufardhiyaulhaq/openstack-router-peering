@@ -17,12 +17,11 @@ import (
 type Neutron struct {
 	sc               *gophercloud.ServiceClient
 	serviceProjectID string
-	tagCreation      bool
 }
 
 var _ Client = (*Neutron)(nil)
 
-// NewNeutron checks the extensions once and returns a client acting as the service account.
+// NewNeutron checks that Neutron supports tags and returns a client acting as the service account.
 func NewNeutron(ctx context.Context, sc *gophercloud.ServiceClient, serviceProjectID string) (*Neutron, error) {
 	n := &Neutron{sc: sc, serviceProjectID: serviceProjectID}
 	var resp struct {
@@ -34,11 +33,11 @@ func NewNeutron(ctx context.Context, sc *gophercloud.ServiceClient, serviceProje
 		return nil, err
 	}
 	for _, e := range resp.Extensions {
-		if e.Alias == "tag-creation" {
-			n.tagCreation = true
+		if e.Alias == "standard-attr-tag" {
+			return n, nil
 		}
 	}
-	return n, nil
+	return nil, errors.New("neutron extension standard-attr-tag is required")
 }
 
 // wrap turns a gophercloud error into *APIError when Neutron answered.
@@ -87,19 +86,11 @@ func (n *Neutron) query(path string, q url.Values) string {
 	return n.sc.ServiceURL(path) + "?" + q.Encode()
 }
 
+// tagAfterCreate sets the tag with its own PUT. Tags are never sent in a create body: some clouds advertise
+// tag-creation and still answer 400 "Attribute 'tags' not allowed in POST" (seen on 2026.1 ML2/OVN).
 func (n *Neutron) tagAfterCreate(ctx context.Context, kind, id, tag string) error {
-	if n.tagCreation {
-		return nil
-	}
 	_, err := n.sc.Put(ctx, n.sc.ServiceURL(kind, id, "tags", tag), nil, nil, &gophercloud.RequestOpts{OkCodes: []int{201, 204}})
 	return wrap(err)
-}
-
-func (n *Neutron) withTag(m map[string]any, tag string) map[string]any {
-	if n.tagCreation {
-		m["tags"] = []string{tag}
-	}
-	return m
 }
 
 type rawPort struct {
@@ -190,7 +181,7 @@ func (n *Neutron) CreateNetwork(ctx context.Context, name, tag string) (string, 
 	var r struct {
 		Network rawNetwork `json:"network"`
 	}
-	body := map[string]any{"network": n.withTag(map[string]any{"name": name, "port_security_enabled": false, "shared": false}, tag)}
+	body := map[string]any{"network": map[string]any{"name": name, "port_security_enabled": false, "shared": false}}
 	if err := n.post(ctx, n.sc.ServiceURL("networks"), body, &r); err != nil {
 		return "", err
 	}
@@ -201,10 +192,10 @@ func (n *Neutron) CreateSubnet(ctx context.Context, networkID, name, tag string,
 	var r struct {
 		Subnet rawSubnet `json:"subnet"`
 	}
-	body := map[string]any{"subnet": n.withTag(map[string]any{
+	body := map[string]any{"subnet": map[string]any{
 		"network_id": networkID, "name": name, "cidr": cidr.String(), "ip_version": 4,
 		"gateway_ip": nil, "enable_dhcp": false,
-	}, tag)}
+	}}
 	if err := n.post(ctx, n.sc.ServiceURL("subnets"), body, &r); err != nil {
 		return "", err
 	}
@@ -215,10 +206,10 @@ func (n *Neutron) CreatePort(ctx context.Context, networkID, subnetID, projectID
 	var r struct {
 		Port rawPort `json:"port"`
 	}
-	body := map[string]any{"port": n.withTag(map[string]any{
+	body := map[string]any{"port": map[string]any{
 		"network_id": networkID, "project_id": projectID, "name": name,
 		"fixed_ips": []map[string]string{{"subnet_id": subnetID, "ip_address": ip.String()}},
-	}, tag)}
+	}}
 	if err := n.post(ctx, n.sc.ServiceURL("ports"), body, &r); err != nil {
 		return "", err
 	}

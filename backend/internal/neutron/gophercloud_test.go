@@ -141,8 +141,8 @@ func TestCreateSubnetBody(t *testing.T) {
 	if s["enable_dhcp"] != false || s["cidr"] != "100.64.0.8/29" || s["ip_version"] != float64(4) {
 		t.Errorf("body %v", s)
 	}
-	if tags, _ := s["tags"].([]any); len(tags) != 1 || tags[0] != "rpx-x" {
-		t.Errorf("tags %v", s["tags"])
+	if _, ok := s["tags"]; ok {
+		t.Errorf("tags must never be sent in a create body: %v", s["tags"])
 	}
 }
 
@@ -230,5 +230,45 @@ func TestLookupsScopedToServiceProject(t *testing.T) {
 	cidrs, _ := n.ListAllSubnetCIDRs(ctx)
 	if len(cidrs) != 1 {
 		t.Errorf("tenant subnet named rpx-* must count for the pool scan: %v", cidrs)
+	}
+}
+
+// the test cloud (2026.1, ML2/OVN) advertises tag-creation but answers 400 "Attribute 'tags' not allowed in POST",
+// so tags are always set with a separate PUT, whatever the extension list says.
+func TestTagsAlwaysSetAfterCreate(t *testing.T) {
+	rec := &recorder{}
+	n := newServer(t, func(w http.ResponseWriter, r *http.Request) {
+		rec.add(r.Method + " " + r.URL.Path)
+		switch {
+		case r.URL.Path == "/v2.0/extensions":
+			writeJSON(w, 200, extensions(true))
+		case r.Method == "POST":
+			body, _ := io.ReadAll(r.Body)
+			if strings.Contains(string(body), "tags") {
+				writeJSON(w, 400, map[string]any{"NeutronError": map[string]any{"type": "HTTPBadRequest", "message": "Attribute 'tags' not allowed in POST"}})
+				return
+			}
+			kind := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/v2.0/"), "s")
+			writeJSON(w, 201, map[string]any{kind: map[string]any{"id": kind + "-1"}})
+		case r.Method == "PUT":
+			w.WriteHeader(201)
+		}
+	})
+	ctx := context.Background()
+	if _, err := n.CreateNetwork(ctx, "rpx-x", "rpx-x"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.CreateSubnet(ctx, "network-1", "rpx-x", "rpx-x", netip.MustParsePrefix("100.64.0.8/29")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := n.CreatePort(ctx, "network-1", "subnet-1", "pa", "rpx-x-requester", "rpx-x", netip.MustParseAddr("100.64.0.9")); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"GET /v2.0/extensions",
+		"POST /v2.0/networks", "PUT /v2.0/networks/network-1/tags/rpx-x",
+		"POST /v2.0/subnets", "PUT /v2.0/subnets/subnet-1/tags/rpx-x",
+		"POST /v2.0/ports", "PUT /v2.0/ports/port-1/tags/rpx-x"}
+	if !reflect.DeepEqual(rec.calls, want) {
+		t.Fatalf("calls %v", rec.calls)
 	}
 }
