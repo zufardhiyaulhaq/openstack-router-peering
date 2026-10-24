@@ -1,10 +1,15 @@
 """Client for the router-peering API, acting as the logged-in Horizon user."""
+from urllib.parse import urlencode
+
 from django.conf import settings
+from horizon import exceptions as horizon_exceptions
 from openstack_dashboard.api import base
 import requests
 
 SERVICE_TYPE = 'router-peering'
 TIMEOUT = 10
+PAGE_SIZE = 100
+MAX_PAGES = 10  # up to 1,000 peerings per direction
 
 
 class APIError(Exception):
@@ -24,10 +29,14 @@ def _verify():
 
 
 def _call(request, method, path, json=None):
-    url = base.url_for(request, SERVICE_TYPE).rstrip('/') + path
     try:
+        url = base.url_for(request, SERVICE_TYPE).rstrip('/') + path
+    except horizon_exceptions.ServiceCatalogException:
+        raise APIError(503, 'router peering service is not in the service catalog')
+    try:
+        # No redirects: requests would forward X-Auth-Token (the user's token) to the redirect target.
         resp = requests.request(method, url, json=json, timeout=TIMEOUT, verify=_verify(),
-                                headers={'X-Auth-Token': request.user.token.id})
+                                allow_redirects=False, headers={'X-Auth-Token': request.user.token.id})
     except requests.RequestException:
         raise APIError(503, 'router peering service unreachable')
     try:
@@ -42,8 +51,20 @@ def _call(request, method, path, json=None):
 
 
 def list(request, direction=None):  # noqa: A001 - mirrors the API verb
-    path = '/v1/peerings' + ('?direction=%s' % direction if direction else '')
-    return _call(request, 'GET', path) or []
+    """Every peering in one direction, following the API's pages (oldest first) up to MAX_PAGES."""
+    out = []
+    marker = None
+    for _ in range(MAX_PAGES):
+        params = [('direction', direction)] if direction else []
+        params.append(('limit', PAGE_SIZE))
+        if marker:
+            params.append(('marker', marker))
+        page = _call(request, 'GET', '/v1/peerings?' + urlencode(params)) or []
+        out.extend(page)
+        if len(page) < PAGE_SIZE:
+            break
+        marker = page[-1]['id']
+    return out
 
 
 def get(request, peering_id):

@@ -32,13 +32,14 @@ class APITests(test.TestCase):
         self.assertEqual(kwargs['headers']['X-Auth-Token'], self.request.user.token.id)
         self.assertEqual(kwargs.get('json'), json)
         self.assertEqual(kwargs['timeout'], 10)
+        self.assertIs(kwargs['allow_redirects'], False)  # never send the user's token to a redirect target
 
     def test_list(self):
         out, req = self.call(peering.list, direction='incoming', body=[test.peering()])
-        self.assertSent(req, 'GET', '/v1/peerings?direction=incoming')
+        self.assertSent(req, 'GET', '/v1/peerings?direction=incoming&limit=100')
         self.assertEqual(out[0]['id'], 'rpx-0123456789ab')
         _, req = self.call(peering.list, body=[])
-        self.assertSent(req, 'GET', '/v1/peerings')
+        self.assertSent(req, 'GET', '/v1/peerings?limit=100')
 
     def test_get_and_events(self):
         _, req = self.call(peering.get, 'rpx-1', body=test.peering())
@@ -78,3 +79,28 @@ class APITests(test.TestCase):
             with self.assertRaises(peering.APIError) as cm:
                 peering.list(self.request)
         self.assertEqual((cm.exception.status, cm.exception.message), (503, 'router peering service unreachable'))
+
+    def test_list_follows_pages(self):
+        page1 = [test.peering(id='rpx-%012d' % i) for i in range(100)]
+        page2 = [test.peering(id='rpx-new-pending')]
+        with mock.patch.object(peering.requests, 'request',
+                               side_effect=[response(200, page1), response(200, page2)]) as req:
+            out = peering.list(self.request, direction='incoming')
+        self.assertEqual(len(out), 101)
+        self.assertEqual(out[-1]['id'], 'rpx-new-pending')
+        self.assertEqual(req.call_args_list[1].args[1],
+                         BASE + '/v1/peerings?direction=incoming&limit=100&marker=rpx-000000000099')
+
+    def test_list_page_cap(self):
+        full = [test.peering(id='rpx-x') for _ in range(100)]
+        with mock.patch.object(peering.requests, 'request', return_value=response(200, full)) as req:
+            out = peering.list(self.request)
+        self.assertEqual(req.call_count, peering.MAX_PAGES)
+        self.assertEqual(len(out), 100 * peering.MAX_PAGES)
+
+    def test_service_missing_from_catalog(self):
+        from horizon import exceptions as horizon_exceptions
+        with mock.patch.object(peering.base, 'url_for', side_effect=horizon_exceptions.ServiceCatalogException('router-peering')):
+            with self.assertRaises(peering.APIError) as cm:
+                peering.list(self.request)
+        self.assertEqual(cm.exception.status, 503)
