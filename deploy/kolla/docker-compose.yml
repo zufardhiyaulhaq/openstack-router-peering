@@ -2,8 +2,8 @@
 # (RP_DATABASE_URL, RP_KEYSTONE_PASSWORD, POSTGRES_PASSWORD) and router-peering.yaml next to it.
 #
 # Run postgres on ONE host only. api and reconciler may run on several hosts, all pointing at that database.
-#   docker compose up -d                       # all three on this host
-#   docker compose up -d api reconciler        # other hosts
+#   docker compose up -d                                 # all three on this host
+#   docker compose up -d --no-deps api reconciler        # other hosts (--no-deps: do not start postgres there)
 services:
   postgres:
     image: postgres:16
@@ -19,11 +19,22 @@ services:
     command: [postgres, -c, "listen_addresses=${RP_DB_LISTEN:-127.0.0.1}"]
     volumes:
       - /var/lib/router-peering/pg:/var/lib/postgresql/data
+    healthcheck:
+      # Uses the address postgres listens on, so it also works when RP_DB_LISTEN is set.
+      test: ["CMD-SHELL", "pg_isready -q -h ${RP_DB_LISTEN:-127.0.0.1} -p 5433 -U router_peering -d router_peering"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
 
   api:
     image: ${ROUTER_PEERING_IMAGE:-ghcr.io/zufardhiyaulhaq/router-peering:latest}
     command: [api, --config, /etc/router-peering/router-peering.yaml]
     restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false        # hosts without postgres (HA) start with --no-deps
     network_mode: host
     env_file: .env
     volumes:
@@ -33,6 +44,10 @@ services:
     image: ${ROUTER_PEERING_IMAGE:-ghcr.io/zufardhiyaulhaq/router-peering:latest}
     command: [reconciler, --config, /etc/router-peering/router-peering.yaml]
     restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false        # hosts without postgres (HA) start with --no-deps
     network_mode: host
     env_file: .env
     volumes:
