@@ -35,6 +35,13 @@ jobs:
       - run: go vet ./... && go vet -tags e2e ./...
       - run: go test -count=1 ./...
 
+  frontend-test:
+    # Runs the Horizon plugin tests inside the Kolla Horizon image it is deployed on.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make -C frontend test
+
   image:
     # Every push to main and every v* tag builds and pushes ghcr.io/<owner>/router-peering.
     needs: test

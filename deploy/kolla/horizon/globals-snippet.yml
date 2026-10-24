@@ -1,0 +1,4 @@
+# Add to /etc/kolla/globals.yml. Mounts the plugin into the stock Kolla Horizon container (no custom image).
+# /opt/router-peering/dashboard must hold a copy of frontend/router_peering_dashboard from this repo.
+# The python3 path is a symlink to the image's real Python (3.12 on 2026.1), so it survives Python bumps.
+horizon_extra_volumes: "{{ default_extra_volumes + ['/opt/router-peering/dashboard/router_peering_dashboard:/var/lib/kolla/venv/lib/python3/site-packages/router_peering_dashboard:ro', '/opt/router-peering/dashboard/router_peering_dashboard/enabled/_1490_project_router_peering_panel.py:/var/lib/kolla/venv/lib/python3/site-packages/openstack_dashboard/local/enabled/_1490_project_router_peering_panel.py:ro'] }}"

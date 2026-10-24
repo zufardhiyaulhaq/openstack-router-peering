@@ -12,7 +12,7 @@ Design: [docs/superpowers/specs/2026-10-23-router-peering-design.md](docs/superp
 | Path | What |
 |---|---|
 | `backend/` | Go service: API, reconciler, migrations, Dockerfile, unit and e2e tests (`backend/test/e2e`) |
-| `frontend/` | UI (not built yet) |
+| `frontend/` | Horizon plugin (Project → Network → Router Peering); deploy with `deploy/kolla/horizon/` |
 | `deploy/` | deploy files; `deploy/kolla/` for Kolla-Ansible clouds |
 | `docs/` | design spec, plans, brainstorm notes |
 
