@@ -29,6 +29,16 @@ def peering(**over):
     return p
 
 
+def api_request(catalog, token='user-token'):
+    """A request carrying what the API client reads: the user's token, catalog and region."""
+    from unittest import mock
+    req = mock.Mock()
+    req.user.token.id = token
+    req.user.service_catalog = catalog
+    req.user.services_region = 'RegionOne'
+    return req
+
+
 class IsHttpRequest:
     def __eq__(self, other):
         return isinstance(other, http.HttpRequest)
