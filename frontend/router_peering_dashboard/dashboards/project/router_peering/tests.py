@@ -208,3 +208,59 @@ class AcceptTests(test.TestCase):
         get.side_effect = api.APIError(404, 'peering not found')
         res = self.client.get(ACCEPT_URL)
         self.assertRedirectsNoFollow(res, INDEX_URL)
+
+
+DETAIL_URL = reverse('horizon:project:router_peering:detail', args=[PID])
+HINT = 'openstack router set --route destination=10.2.0.0/24,gateway=100.64.0.2 aaaaaaaa-0000-0000-0000-000000000001'
+
+
+class DetailTests(test.TestCase):
+    @mock.patch.object(api, 'list')
+    def test_name_links_to_detail(self, list_):
+        list_.side_effect = by_direction([test.peering()])
+        self.assertContains(self.client.get(INDEX_URL), DETAIL_URL)
+
+    @mock.patch.object(api, 'events', return_value=[])
+    @mock.patch.object(api, 'get')
+    def test_detail_active_shows_hints(self, get, events):
+        get.return_value = test.peering(status='active', next_hop='100.64.0.2', peer_cidrs=['10.2.0.0/24'],
+                                        route_hints=[HINT], warnings=['10.9.0.0/24 overlaps with the peer'])
+        res = self.client.get(DETAIL_URL)
+        self.assertTemplateUsed(res, 'project/router_peering/detail.html')
+        for text in (HINT, '100.64.0.2', '10.2.0.0/24', '10.9.0.0/24 overlaps with the peer'):
+            self.assertContains(res, text)
+
+    @mock.patch.object(api, 'events', return_value=[])
+    @mock.patch.object(api, 'get')
+    def test_detail_pending_no_hints(self, get, events):
+        get.return_value = test.peering()
+        res = self.client.get(DETAIL_URL)
+        self.assertContains(res, 'Route hints appear once the peering is active')
+        self.assertNotContains(res, '<pre')
+
+    @mock.patch.object(api, 'events')
+    @mock.patch.object(api, 'get')
+    def test_detail_events(self, get, events):
+        get.return_value = test.peering(status='rejected')
+        events.return_value = [
+            {'at': '2026-10-24T08:00:00Z', 'action': 'requested', 'actor_user_id': 'user-a', 'actor_project_id': 'pa'},
+            {'at': '2026-10-24T09:00:00Z', 'action': 'rejected'},
+        ]
+        res = self.client.get(DETAIL_URL)
+        self.assertContains(res, 'requested')
+        self.assertContains(res, 'user-a')
+        self.assertContains(res, 'rejected')
+
+    @mock.patch.object(api, 'get')
+    def test_detail_not_found_redirects(self, get):
+        get.side_effect = api.APIError(404, 'peering not found')
+        self.assertRedirectsNoFollow(self.client.get(DETAIL_URL), INDEX_URL)
+
+    @mock.patch.object(api, 'events')
+    @mock.patch.object(api, 'get')
+    def test_detail_events_api_error(self, get, events):
+        get.return_value = test.peering()
+        events.side_effect = api.APIError(503, 'router peering service unreachable')
+        res = self.client.get(DETAIL_URL)
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, 'router peering service unreachable')

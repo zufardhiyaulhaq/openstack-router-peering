@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% load i18n %}
+{% block title %}{{ peering.name }}{% endblock %}
+
+{% block main %}
+<div class="detail">
+  <dl class="dl-horizontal">
+    <dt>{% trans "Name" %}</dt><dd>{{ peering.name }}</dd>
+    <dt>{% trans "ID" %}</dt><dd>{{ peering.id }}</dd>
+    <dt>{% trans "Status" %}</dt><dd>{{ peering.status }}</dd>
+    {% if peering.status_reason %}<dt>{% trans "Details" %}</dt><dd>{{ peering.status_reason }}</dd>{% endif %}
+    <dt>{% trans "Your side" %}</dt><dd>{{ peering.role }}</dd>
+    <dt>{% trans "Your router" %}</dt><dd>{{ peering.router_id|default:"-" }}</dd>
+    <dt>{% trans "Peer project ID" %}</dt><dd>{{ peering.peer_project_id }}</dd>
+    {% if peering.peer_project_name %}<dt>{% trans "Peer project" %}</dt><dd>{{ peering.peer_project_name }}</dd>{% endif %}
+    <dt>{% trans "Next hop" %}</dt><dd>{{ peering.next_hop|default:"-" }}</dd>
+    <dt>{% trans "Peer CIDRs" %}</dt><dd>{{ peering.peer_cidrs|join:", "|default:"-" }}</dd>
+    {% if peering.status == 'pending_acceptance' %}<dt>{% trans "Expires" %}</dt><dd>{{ peering.expires_at }}</dd>{% endif %}
+  </dl>
+
+  {% if peering.warnings %}
+    <div class="alert alert-warning">
+      {% for w in peering.warnings %}<div>{{ w }}</div>{% endfor %}
+    </div>
+  {% endif %}
+
+  <h4>{% trans "Route hints" %}</h4>
+  {% if peering.route_hints %}
+    <p>{% trans "Run these to send traffic for the peer's subnets through the peering. Then allow the peer's CIDRs in your security groups." %}</p>
+    {% for hint in peering.route_hints %}<pre>{{ hint }}</pre>{% endfor %}
+  {% else %}
+    <p>{% trans "Route hints appear once the peering is active." %}</p>
+  {% endif %}
+
+  {{ table.render }}
+</div>
+{% endblock %}

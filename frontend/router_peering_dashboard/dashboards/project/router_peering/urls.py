@@ -6,4 +6,5 @@ urlpatterns = [
     re_path(r'^$', views.IndexView.as_view(), name='index'),
     re_path(r'^create/$', views.CreateView.as_view(), name='create'),
     re_path(r'^(?P<peering_id>[^/]+)/accept/$', views.AcceptView.as_view(), name='accept'),
+    re_path(r'^(?P<peering_id>[^/]+)/$', views.DetailView.as_view(), name='detail'),
 ]

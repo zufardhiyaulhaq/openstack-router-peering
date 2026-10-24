@@ -122,7 +122,7 @@ def expires(p):
 
 
 class PeeringsTable(tables.DataTable):
-    name = tables.Column('name', verbose_name=_("Name"))
+    name = tables.Column('name', verbose_name=_("Name"), link='horizon:project:router_peering:detail')
     peer_project_id = tables.Column('peer_project_id', verbose_name=_("Peer Project ID"))
     router_id = tables.Column('router_id', verbose_name=_("My Router"), empty_value='-')
     status = tables.Column('status', verbose_name=_("Status"))
@@ -151,3 +151,27 @@ class IncomingTable(PeeringsTable):
         verbose_name = _("Incoming")
         table_actions = ()
         row_actions = (AcceptPeering, RepairPeering, RejectPeering, DeletePeering)
+
+
+class EventsTable(tables.DataTable):
+    at = tables.Column('at', verbose_name=_("Time"))
+    action = tables.Column('action', verbose_name=_("Event"))
+    actor = tables.Column('actor_user_id', verbose_name=_("By user"), empty_value='-')
+    actor_project = tables.Column('actor_project_id', verbose_name=_("By project"), empty_value='-')
+
+    class Meta:
+        name = 'events'
+        verbose_name = _("History")
+
+    def get_object_id(self, datum):
+        return datum.id
+
+
+def wrap_events(events):
+    """Events have no ID of their own; number them for the table."""
+    out = []
+    for i, e in enumerate(events):
+        e = dict({'actor_user_id': '', 'actor_project_id': ''}, **e)
+        e['id'] = str(i)
+        out.append(SimpleNamespace(**e))
+    return out
