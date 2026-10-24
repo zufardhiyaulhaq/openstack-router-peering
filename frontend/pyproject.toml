@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "router-peering-dashboard"
+version = "0.1.0"
+description = "Horizon panel for OpenStack router peering"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+# Horizon and requests come from the Horizon environment the plugin is installed into.
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["router_peering_dashboard*"]
+
+[tool.setuptools.package-data]
+"*" = ["templates/**/*.html"]
