@@ -1,0 +1,7 @@
+{% extends 'base.html' %}
+{% load i18n %}
+{% block title %}{% trans "Request Peering" %}{% endblock %}
+
+{% block main %}
+  {% include 'project/router_peering/_create.html' %}
+{% endblock %}

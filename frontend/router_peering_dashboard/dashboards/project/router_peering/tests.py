@@ -103,3 +103,47 @@ class IndexTests(test.TestCase):
     def test_status_reason_shown(self, list_):
         list_.side_effect = by_direction([test.peering(status='deleting', status_reason='remove routes via 100.64.0.2 on router r1 first')])
         self.assertContains(self.client.get(INDEX_URL), 'remove routes via 100.64.0.2 on router r1 first')
+
+
+from openstack_dashboard.api import neutron as neutron_api  # noqa: E402
+
+CREATE_URL = reverse('horizon:project:router_peering:create')
+
+
+class CreateTests(test.TestCase):
+    @mock.patch.object(api, 'list', return_value=[])
+    def test_create_button_on_outgoing(self, list_):
+        self.assertContains(self.client.get(INDEX_URL), 'outgoing__action_create')
+
+    @mock.patch.object(neutron_api, 'router_list')
+    def test_create_get(self, router_list):
+        router_list.return_value = self.routers.list()
+        res = self.client.get(CREATE_URL)
+        self.assertTemplateUsed(res, 'project/router_peering/create.html')
+        self.assertContains(res, self.routers.first().name)
+        self.assertContains(res, 'openstack token issue -c project_id')
+        router_list.assert_called_once_with(test.IsHttpRequest(), tenant_id=self.request.user.tenant_id)
+
+    @mock.patch.object(api, 'create')
+    @mock.patch.object(neutron_api, 'router_list')
+    def test_create_post_ok(self, router_list, create):
+        router_list.return_value = self.routers.list()
+        router = self.routers.first()
+        res = self.client.post(CREATE_URL, {'name': 'a-to-b', 'router_id': router.id,
+                                            'peer_project_id': 'b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0'})
+        self.assertNoFormErrors(res)
+        self.assertRedirectsNoFollow(res, INDEX_URL)
+        create.assert_called_once_with(test.IsHttpRequest(), 'a-to-b', router.id, 'b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0')
+
+    @mock.patch.object(api, 'create')
+    @mock.patch.object(neutron_api, 'router_list')
+    def test_create_api_error(self, router_list, create):
+        router_list.return_value = self.routers.list()
+        create.side_effect = api.APIError(409, 'project has reached its limit of open peerings')
+        res = self.client.post(CREATE_URL, {'name': 'x', 'router_id': self.routers.first().id, 'peer_project_id': 'pb'})
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, 'project has reached its limit of open peerings')
+
+    @mock.patch.object(neutron_api, 'router_list', return_value=[])
+    def test_create_no_routers(self, router_list):
+        self.assertContains(self.client.get(CREATE_URL), 'No routers in this project')

@@ -24,6 +24,14 @@ def _call(request, fn, peering_id):
         raise
 
 
+class CreatePeering(tables.LinkAction):
+    name = 'create'
+    verbose_name = _("Request Peering")
+    url = 'horizon:project:router_peering:create'
+    classes = ('ajax-modal',)
+    icon = 'plus'
+
+
 class RejectPeering(tables.DeleteAction):
     name = 'reject'
     help_text = _("The requester is told the request was rejected. Nothing is built.")
@@ -123,7 +131,7 @@ class OutgoingTable(PeeringsTable):
     class Meta:
         name = 'outgoing'
         verbose_name = _("Outgoing")
-        table_actions = ()
+        table_actions = (CreatePeering,)
         row_actions = (RepairPeering, CancelPeering, DeletePeering)
 
 

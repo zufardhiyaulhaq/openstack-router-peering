@@ -1,0 +1,8 @@
+{% extends 'horizon/common/_modal_form.html' %}
+{% load i18n %}
+
+{% block modal-body-right %}
+  <h3>{% trans "Description:" %}</h3>
+  <p>{% trans "Ask another project to peer one of your routers with one of theirs. They choose their router when they accept." %}</p>
+  <p>{% trans "Once accepted, add your own routes and security group rules. Use the next hop shown on the peering." %}</p>
+{% endblock %}
