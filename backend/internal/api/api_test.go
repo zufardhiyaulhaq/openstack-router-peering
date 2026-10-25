@@ -167,3 +167,20 @@ func TestGetMakesNoNeutronCalls(t *testing.T) {
 		t.Fatal("the injected failure was consumed: GET called Neutron")
 	}
 }
+
+func TestCreateBadRouterID400(t *testing.T) {
+	e := newTEnv(t)
+	for _, body := range []map[string]string{
+		{"name": "x", "router_id": "router-1", "peer_project_id": "pb", "peer_router_id": routerB},
+		{"name": "x", "router_id": routerA, "peer_project_id": "pb", "peer_router_id": "not-a-uuid"},
+	} {
+		e.nf.FailNext("GetRouter", errors.New("neutron must not be called for a malformed ID"))
+		var out errorBody
+		if code := e.do(t, "POST", "/v1/peerings", "tok-a", body, &out); code != 400 || !strings.Contains(out.Error, "is not a valid router ID") {
+			t.Fatalf("body %v: code %d %+v", body, code, out)
+		}
+		if _, err := e.nf.GetRouter(context.Background(), routerA); err == nil {
+			t.Fatal("injected failure consumed: Neutron was called")
+		}
+	}
+}

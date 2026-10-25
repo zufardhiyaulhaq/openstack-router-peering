@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"net/netip"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -108,6 +109,11 @@ func Tag(id string) string { return id }
 func ValidProjectID(s string) bool {
 	return s != "" && len(s) <= 64 && !strings.ContainsAny(s, " \t\r\n")
 }
+
+var routerIDRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// ValidRouterID is a loose UUID-shape check; existence is checked in Neutron.
+func ValidRouterID(s string) bool { return routerIDRe.MatchString(s) }
 
 // BlockIPs returns the requester (first usable) and accepter (second usable) IPs of a block.
 func BlockIPs(p netip.Prefix) (requester, accepter netip.Addr) {

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -44,11 +45,24 @@ func (a *API) accept(w http.ResponseWriter, r *http.Request, c caller) {
 		writeErr(w, http.StatusForbidden, "only the accepter project can accept")
 		return
 	}
+	// The requester named both routers at request time; the accepter only confirms. A body naming another
+	// router is refused so a client never believes it chose one.
+	var body struct {
+		RouterID string `json:"router_id"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if body.RouterID != "" && body.RouterID != p.AccepterRouterID {
+		writeErr(w, http.StatusBadRequest, "this peering is for router "+p.AccepterRouterID+"; accept takes no router")
+		return
+	}
 	if p.Status != model.StatusPendingAcceptance {
 		conflict(w, "peering is "+string(p.Status)+", not pending_acceptance")
 		return
 	}
-	// No body: the requester named both routers at request time; the accepter only confirms.
+	if p.AccepterRouterID == "" {
+		conflict(w, "this request names no peer router; ask the requester to request again")
+		return
+	}
 	proj, err := a.ks.GetProject(r.Context(), p.RequesterProjectID)
 	if errors.Is(err, keystone.ErrNotFound) || (err == nil && !proj.Enabled) {
 		conflict(w, "requester project is deleted or disabled")

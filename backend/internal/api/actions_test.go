@@ -114,13 +114,36 @@ func TestAcceptRequesterProjectDisabled409(t *testing.T) {
 	}
 }
 
-func TestAcceptIgnoresRouterInBody(t *testing.T) {
+func TestAcceptOtherRouterInBody400(t *testing.T) {
 	e := newTEnv(t)
 	v := e.create(t)
-	var out View
-	// The accepter cannot swap in another router: the requester chose B's router at request time.
-	if code := e.do(t, "POST", "/v1/peerings/"+v.ID+"/accept", "tok-b", map[string]string{"router_id": routerB2}, &out); code != 202 || out.RouterID != routerB {
-		t.Fatalf("code %d router %s", code, out.RouterID)
+	var out errorBody
+	code := e.do(t, "POST", "/v1/peerings/"+v.ID+"/accept", "tok-b", map[string]string{"router_id": routerB2}, &out)
+	if code != 400 || out.Error != "this peering is for router "+routerB+"; accept takes no router" {
+		t.Fatalf("code %d body %+v", code, out)
+	}
+	if e.status(t, v.ID) != model.StatusPendingAcceptance {
+		t.Fatal("must stay pending")
+	}
+}
+
+func TestAcceptSameRouterInBody202(t *testing.T) {
+	e := newTEnv(t)
+	v := e.create(t)
+	if code := e.do(t, "POST", "/v1/peerings/"+v.ID+"/accept", "tok-b", map[string]string{"router_id": routerB}, nil); code != 202 {
+		t.Fatalf("code %d", code)
+	}
+}
+
+func TestAcceptLegacyRowWithoutRouter409(t *testing.T) {
+	e := newTEnv(t)
+	p := &model.Peering{Name: "old", RequesterProjectID: "pa", RequesterRouterID: routerA, AccepterProjectID: "pb", CreatedBy: "ua"}
+	if err := e.st.CreatePeering(context.Background(), p); err != nil { // created the old way: no peer router
+		t.Fatal(err)
+	}
+	var out errorBody
+	if code := e.accept(t, p.ID, "tok-b", &out); code != 409 || out.Error != "this request names no peer router; ask the requester to request again" {
+		t.Fatalf("code %d body %+v", code, out)
 	}
 }
 

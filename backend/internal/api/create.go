@@ -44,6 +44,12 @@ func (a *API) create(w http.ResponseWriter, r *http.Request, c caller) {
 	case req.PeerRouterID == "":
 		writeErr(w, http.StatusBadRequest, "peer_router_id is required")
 		return
+	case !model.ValidRouterID(req.RouterID):
+		writeErr(w, http.StatusBadRequest, "router_id is not a valid router ID")
+		return
+	case !model.ValidRouterID(req.PeerRouterID):
+		writeErr(w, http.StatusBadRequest, "peer_router_id is not a valid router ID")
+		return
 	}
 	if _, err := a.ks.GetProject(r.Context(), req.PeerProjectID); errors.Is(err, keystone.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "peer project not found")

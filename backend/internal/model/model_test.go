@@ -71,3 +71,16 @@ func TestTag(t *testing.T) {
 		t.Fatal("tag must equal id")
 	}
 }
+
+func TestValidRouterID(t *testing.T) {
+	for _, ok := range []string{"aaaaaaaa-0000-0000-0000-000000000001", "7F877C2D-66D5-4392-BBE2-E0A3D51F5AD1"} {
+		if !ValidRouterID(ok) {
+			t.Errorf("%q rejected", ok)
+		}
+	}
+	for _, bad := range []string{"", "router-1", "aaaaaaaa00000000000000000000000001", "aaaaaaaa-0000-0000-0000-00000000000g", "aaaaaaaa-0000-0000-0000-0000000000011"} {
+		if ValidRouterID(bad) {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+}
