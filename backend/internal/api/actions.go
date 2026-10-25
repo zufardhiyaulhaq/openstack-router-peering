@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -49,13 +48,7 @@ func (a *API) accept(w http.ResponseWriter, r *http.Request, c caller) {
 		conflict(w, "peering is "+string(p.Status)+", not pending_acceptance")
 		return
 	}
-	var req struct {
-		RouterID string `json:"router_id"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RouterID == "" {
-		writeErr(w, http.StatusBadRequest, "body must be JSON with router_id")
-		return
-	}
+	// No body: the requester named both routers at request time; the accepter only confirms.
 	proj, err := a.ks.GetProject(r.Context(), p.RequesterProjectID)
 	if errors.Is(err, keystone.ErrNotFound) || (err == nil && !proj.Enabled) {
 		conflict(w, "requester project is deleted or disabled")
@@ -65,7 +58,13 @@ func (a *API) accept(w http.ResponseWriter, r *http.Request, c caller) {
 		writeErr(w, http.StatusServiceUnavailable, "cannot reach Keystone")
 		return
 	}
-	if !a.ownRouter(w, r, c, req.RouterID) {
+	accRouter, err := a.nc.GetRouter(r.Context(), p.AccepterRouterID)
+	if neutron.KindOf(err) == neutron.KindNotFound || (err == nil && accRouter.ProjectID != p.AccepterProjectID) {
+		conflict(w, "your router no longer exists")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusServiceUnavailable, "cannot reach Neutron")
 		return
 	}
 	reqRouter, err := a.nc.GetRouter(r.Context(), p.RequesterRouterID)
@@ -73,11 +72,6 @@ func (a *API) accept(w http.ResponseWriter, r *http.Request, c caller) {
 		conflict(w, "requester router no longer exists")
 		return
 	}
-	if err != nil {
-		writeErr(w, http.StatusServiceUnavailable, "cannot reach Neutron")
-		return
-	}
-	accRouter, err := a.nc.GetRouter(r.Context(), req.RouterID)
 	if err != nil {
 		writeErr(w, http.StatusServiceUnavailable, "cannot reach Neutron")
 		return
@@ -92,9 +86,9 @@ func (a *API) accept(w http.ResponseWriter, r *http.Request, c caller) {
 		writeJSON(w, http.StatusConflict, errorBody{Error: "CIDRs overlap between the 2 sides; pick another router or change subnets", Overlaps: overlaps})
 		return
 	}
-	router, by := req.RouterID, c.UserID
+	by := c.UserID
 	a.transition(w, r, c, p, []model.Status{model.StatusPendingAcceptance}, model.StatusProvisioning,
-		store.Patch{AccepterRouterID: &router, AcceptedBy: &by}, model.ActionAccepted, http.StatusAccepted)
+		store.Patch{AcceptedBy: &by}, model.ActionAccepted, http.StatusAccepted)
 }
 
 // overlaps applies spec §9: A vs B, A vs routers already peered with B, B vs routers already peered with A.

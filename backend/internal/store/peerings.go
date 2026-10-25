@@ -111,15 +111,18 @@ func (s *Store) CreatePeering(ctx context.Context, p *model.Peering) error {
 		if !p.ExpiresAt.IsZero() {
 			expires = p.ExpiresAt
 		}
-		row := tx.QueryRow(ctx, `INSERT INTO peerings (id, name, requester_project_id, requester_router_id, accepter_project_id, created_by, expires_at)
-			VALUES ($1, $2, $3, $4, $5, $6, coalesce($7, now() + interval '7 days'))
+		row := tx.QueryRow(ctx, `INSERT INTO peerings (id, name, requester_project_id, requester_router_id, accepter_project_id, accepter_router_id, created_by, expires_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, coalesce($8, now() + interval '7 days'))
 			RETURNING `+peeringCols,
-			p.ID, p.Name, p.RequesterProjectID, p.RequesterRouterID, p.AccepterProjectID, p.CreatedBy, expires)
+			p.ID, p.Name, p.RequesterProjectID, p.RequesterRouterID, p.AccepterProjectID, nullStr(p.AccepterRouterID), p.CreatedBy, expires)
 		got, err := scanPeering(row)
 		if err != nil {
 			_ = tx.Rollback(ctx)
 			if isUniqueViolation(err, "peerings_pkey") {
 				continue
+			}
+			if isUniqueViolation(err, "peerings_router_pair") {
+				return fmt.Errorf("%w: these routers already have a live peering", ErrConflict)
 			}
 			return err
 		}

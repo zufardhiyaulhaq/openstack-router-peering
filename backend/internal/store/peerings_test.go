@@ -228,3 +228,20 @@ func TestListLiveByRouter(t *testing.T) {
 		t.Fatalf("terminal peering listed: %v", got)
 	}
 }
+
+func TestCreateSamePairConflict(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	p := newPending("pa", "pb")
+	p.AccepterRouterID = routerB
+	mustCreate(t, s, p)
+	got, _ := s.GetPeering(ctx, p.ID)
+	if got.AccepterRouterID != routerB {
+		t.Fatalf("accepter router not stored at create: %q", got.AccepterRouterID)
+	}
+	q := newPending("pb", "pa") // reverse direction, same 2 routers
+	q.RequesterRouterID, q.AccepterRouterID = routerB, routerA
+	if err := s.CreatePeering(ctx, q); !errors.Is(err, ErrConflict) {
+		t.Fatalf("want ErrConflict for a second live peering on the same pair, got %v", err)
+	}
+}

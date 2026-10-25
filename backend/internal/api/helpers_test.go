@@ -18,9 +18,11 @@ import (
 )
 
 const (
-	routerA = "aaaaaaaa-0000-0000-0000-000000000001"
-	routerB = "bbbbbbbb-0000-0000-0000-000000000001"
-	routerC = "cccccccc-0000-0000-0000-000000000001"
+	routerA  = "aaaaaaaa-0000-0000-0000-000000000001"
+	routerB  = "bbbbbbbb-0000-0000-0000-000000000001"
+	routerC  = "cccccccc-0000-0000-0000-000000000001"
+	routerA2 = "aaaaaaaa-0000-0000-0000-000000000002"
+	routerB2 = "bbbbbbbb-0000-0000-0000-000000000002"
 )
 
 type tenv struct {
@@ -49,6 +51,8 @@ func newTEnv(t *testing.T) *tenv {
 	nf.AddRouter(routerA, "pa", netip.MustParsePrefix("10.1.0.0/24"))
 	nf.AddRouter(routerB, "pb", netip.MustParsePrefix("10.2.0.0/24"))
 	nf.AddRouter(routerC, "pc", netip.MustParsePrefix("10.3.0.0/24"))
+	nf.AddRouter(routerA2, "pa", netip.MustParsePrefix("10.5.0.0/24"))
+	nf.AddRouter(routerB2, "pb", netip.MustParsePrefix("10.4.0.0/24"))
 	cfg := config.Defaults()
 	cfg.TransitPool = netip.MustParsePrefix("100.64.0.0/24")
 	_, _ = st.SeedBlocks(context.Background(), cfg.TransitPool)
@@ -76,12 +80,18 @@ func (e *tenv) do(t *testing.T, method, path, token string, body any, out any) i
 	return rec.Code
 }
 
-// create makes a peering from A's router to project B and returns its view.
+// create makes a peering from A's router to B's router and returns its view.
 func (e *tenv) create(t *testing.T) View {
 	t.Helper()
+	return e.createPair(t, "tok-a", routerA, "pb", routerB)
+}
+
+func (e *tenv) createPair(t *testing.T, token, router, peerProject, peerRouter string) View {
+	t.Helper()
 	var v View
-	if code := e.do(t, "POST", "/v1/peerings", "tok-a", map[string]string{"name": "a-to-b", "router_id": routerA, "peer_project_id": "pb"}, &v); code != 201 {
-		t.Fatalf("create: %d", code)
+	body := map[string]string{"name": "pair", "router_id": router, "peer_project_id": peerProject, "peer_router_id": peerRouter}
+	if code := e.do(t, "POST", "/v1/peerings", token, body, &v); code != 201 {
+		t.Fatalf("create %s->%s: %d", router, peerRouter, code)
 	}
 	return v
 }

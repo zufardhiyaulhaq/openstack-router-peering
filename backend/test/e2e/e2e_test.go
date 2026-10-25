@@ -208,7 +208,7 @@ func (a apiClient) waitStatus(t *testing.T, tn *tenant, id, want string, timeout
 
 func (a apiClient) request(t *testing.T, ta, tb *tenant) view {
 	var v view
-	if code := a.call(t, ta, "POST", "/v1/peerings", map[string]string{"name": "e2e", "router_id": ta.routerID, "peer_project_id": tb.projectID}, &v); code != 201 {
+	if code := a.call(t, ta, "POST", "/v1/peerings", map[string]string{"name": "e2e", "router_id": ta.routerID, "peer_project_id": tb.projectID, "peer_router_id": tb.routerID}, &v); code != 201 {
 		t.Fatalf("create: %d", code)
 	}
 	return v
@@ -236,7 +236,7 @@ func TestE2E(t *testing.T) {
 	var active view
 	t.Run("create and accept", func(t *testing.T) {
 		v := api.request(t, ta, tb)
-		if code := api.call(t, tb, "POST", "/v1/peerings/"+v.ID+"/accept", map[string]string{"router_id": tb.routerID}, nil); code != 202 {
+		if code := api.call(t, tb, "POST", "/v1/peerings/"+v.ID+"/accept", nil, nil); code != 202 {
 			t.Fatalf("accept: %d", code)
 		}
 		active = api.waitStatus(t, ta, v.ID, "active", 2*time.Minute)
@@ -285,7 +285,7 @@ func TestE2E(t *testing.T) {
 
 	t.Run("tenant cannot detach; admin detach degrades, repair restores", func(t *testing.T) {
 		v := api.request(t, ta, tb)
-		api.call(t, tb, "POST", "/v1/peerings/"+v.ID+"/accept", map[string]string{"router_id": tb.routerID}, nil)
+		api.call(t, tb, "POST", "/v1/peerings/"+v.ID+"/accept", nil, nil)
 		api.waitStatus(t, ta, v.ID, "active", 2*time.Minute)
 		var ports struct {
 			Ports []struct{ ID string } `json:"ports"`

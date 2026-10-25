@@ -18,8 +18,8 @@ type View struct {
 	RouterID        string    `json:"router_id,omitempty"`
 	PeerProjectID   string    `json:"peer_project_id"`
 	PeerProjectName string    `json:"peer_project_name,omitempty"`
+	PeerRouterID    string    `json:"peer_router_id,omitempty"`
 	NextHop         string    `json:"next_hop,omitempty"`
-	PeerCIDRs       []string  `json:"peer_cidrs"`
 	RouteHints      []string  `json:"route_hints"`
 	Warnings        []string  `json:"warnings"`
 	CreatedAt       time.Time `json:"created_at"`
@@ -27,24 +27,22 @@ type View struct {
 }
 
 // BuildView renders p for callerProject. peerName is shown only to the accepter (it names the requester).
-func BuildView(p model.Peering, callerProject, peerName string, peerCIDRs []netip.Prefix) View {
+// The peer's subnets are never exposed: the route hint leaves the destination for the user to fill in.
+func BuildView(p model.Peering, callerProject, peerName string) View {
 	v := View{ID: p.ID, Name: p.Name, Status: string(p.Status), StatusReason: p.StatusReason,
-		PeerCIDRs: []string{}, RouteHints: []string{}, Warnings: append([]string{}, p.Warnings...),
+		RouteHints: []string{}, Warnings: append([]string{}, p.Warnings...),
 		CreatedAt: p.CreatedAt, ExpiresAt: p.ExpiresAt}
 	var hop netip.Addr
 	if callerProject == p.AccepterProjectID {
-		v.Role, v.RouterID, v.PeerProjectID, v.PeerProjectName, hop = "accepter", p.AccepterRouterID, p.RequesterProjectID, peerName, p.RequesterIP
+		v.Role, v.RouterID, v.PeerRouterID, v.PeerProjectID, v.PeerProjectName, hop =
+			"accepter", p.AccepterRouterID, p.RequesterRouterID, p.RequesterProjectID, peerName, p.RequesterIP
 	} else {
-		v.Role, v.RouterID, v.PeerProjectID, hop = "requester", p.RequesterRouterID, p.AccepterProjectID, p.AccepterIP
-	}
-	for _, c := range peerCIDRs {
-		v.PeerCIDRs = append(v.PeerCIDRs, c.String())
+		v.Role, v.RouterID, v.PeerRouterID, v.PeerProjectID, hop =
+			"requester", p.RequesterRouterID, p.AccepterRouterID, p.AccepterProjectID, p.AccepterIP
 	}
 	if hop.IsValid() {
 		v.NextHop = hop.String()
-		for _, c := range v.PeerCIDRs {
-			v.RouteHints = append(v.RouteHints, fmt.Sprintf("openstack router set --route destination=%s,gateway=%s %s", c, v.NextHop, v.RouterID))
-		}
+		v.RouteHints = []string{fmt.Sprintf("openstack router set --route destination=<peer subnet>,gateway=%s %s", v.NextHop, v.RouterID)}
 	}
 	return v
 }

@@ -16,6 +16,7 @@ type createReq struct {
 	Name          string `json:"name"`
 	RouterID      string `json:"router_id"`
 	PeerProjectID string `json:"peer_project_id"`
+	PeerRouterID  string `json:"peer_router_id"`
 }
 
 func (a *API) create(w http.ResponseWriter, r *http.Request, c caller) {
@@ -24,7 +25,7 @@ func (a *API) create(w http.ResponseWriter, r *http.Request, c caller) {
 	}
 	var req createReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, "body must be JSON with name, router_id and peer_project_id")
+		writeErr(w, http.StatusBadRequest, "body must be JSON with name, router_id, peer_project_id and peer_router_id")
 		return
 	}
 	switch {
@@ -40,6 +41,9 @@ func (a *API) create(w http.ResponseWriter, r *http.Request, c caller) {
 	case req.RouterID == "":
 		writeErr(w, http.StatusBadRequest, "router_id is required")
 		return
+	case req.PeerRouterID == "":
+		writeErr(w, http.StatusBadRequest, "peer_router_id is required")
+		return
 	}
 	if _, err := a.ks.GetProject(r.Context(), req.PeerProjectID); errors.Is(err, keystone.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "peer project not found")
@@ -52,6 +56,16 @@ func (a *API) create(w http.ResponseWriter, r *http.Request, c caller) {
 	if ok := a.ownRouter(w, r, c, req.RouterID); !ok {
 		return
 	}
+	// The peer router must exist in the peer project. Like the project ID, this reveals existence only.
+	if rt, err := a.nc.GetRouter(r.Context(), req.PeerRouterID); neutron.KindOf(err) == neutron.KindNotFound ||
+		(err == nil && rt.ProjectID != req.PeerProjectID) {
+		writeErr(w, http.StatusNotFound, "router not found in peer project")
+		return
+	} else if err != nil {
+		slog.Error("neutron get router", "err", err)
+		writeErr(w, http.StatusServiceUnavailable, "cannot reach Neutron")
+		return
+	}
 	n, err := a.st.CountNonTerminal(r.Context(), c.ProjectID)
 	if err != nil {
 		writeStoreErr(w, err)
@@ -62,12 +76,13 @@ func (a *API) create(w http.ResponseWriter, r *http.Request, c caller) {
 		return
 	}
 	p := &model.Peering{Name: req.Name, RequesterProjectID: c.ProjectID, RequesterRouterID: req.RouterID,
-		AccepterProjectID: req.PeerProjectID, CreatedBy: c.UserID, ExpiresAt: time.Now().Add(a.cfg.PendingTTL)}
+		AccepterProjectID: req.PeerProjectID, AccepterRouterID: req.PeerRouterID, CreatedBy: c.UserID,
+		ExpiresAt: time.Now().Add(a.cfg.PendingTTL)}
 	if err := a.st.CreatePeering(r.Context(), p); err != nil {
 		writeStoreErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, BuildView(*p, c.ProjectID, "", nil))
+	writeJSON(w, http.StatusCreated, BuildView(*p, c.ProjectID, ""))
 }
 
 // ownRouter writes 400 unless routerID exists and belongs to the caller's project.

@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"net/netip"
 	"strconv"
 	"time"
 
@@ -12,27 +11,19 @@ import (
 
 var errNotFound = store.ErrNotFound
 
-// fullView adds the peer project name (accepter only) and the peer router's CIDRs. Lookup failures leave them empty.
+// fullView adds the requester's project name for the accepter. It never calls Neutron.
 func (a *API) fullView(r *http.Request, p model.Peering, c caller) View {
 	project := c.ProjectID
 	if c.side(p) == "" {
 		project = p.RequesterProjectID // cloud admin: requester's perspective
 	}
 	var name string
-	peerRouter := p.AccepterRouterID
 	if project == p.AccepterProjectID {
-		peerRouter = p.RequesterRouterID
 		if pr, err := a.ks.GetProject(r.Context(), p.RequesterProjectID); err == nil {
 			name = pr.Name
 		}
 	}
-	var cidrs []netip.Prefix
-	if peerRouter != "" && p.AccepterRouterID != "" {
-		if rt, err := a.nc.GetRouter(r.Context(), peerRouter); err == nil {
-			cidrs = rt.SubnetCIDRs
-		}
-	}
-	return BuildView(p, project, name, cidrs)
+	return BuildView(p, project, name)
 }
 
 func (a *API) list(w http.ResponseWriter, r *http.Request, c caller) {
@@ -68,7 +59,7 @@ func (a *API) list(w http.ResponseWriter, r *http.Request, c caller) {
 		if c.side(p) == "" {
 			project = p.RequesterProjectID
 		}
-		out = append(out, BuildView(p, project, "", nil))
+		out = append(out, BuildView(p, project, ""))
 	}
 	writeJSON(w, http.StatusOK, out)
 }

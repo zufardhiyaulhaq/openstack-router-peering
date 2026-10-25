@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -13,7 +14,8 @@ import (
 func TestCreate201(t *testing.T) {
 	e := newTEnv(t)
 	v := e.create(t)
-	if !strings.HasPrefix(v.ID, "rpx-") || v.Status != "pending_acceptance" || v.Role != "requester" || v.PeerProjectID != "pb" || v.RouterID != routerA {
+	if !strings.HasPrefix(v.ID, "rpx-") || v.Status != "pending_acceptance" || v.Role != "requester" || v.PeerProjectID != "pb" ||
+		v.RouterID != routerA || v.PeerRouterID != routerB {
 		t.Fatalf("view %+v", v)
 	}
 	p, err := e.st.GetPeering(context.Background(), v.ID)
@@ -30,13 +32,16 @@ func TestCreateValidation(t *testing.T) {
 		body  map[string]string
 		code  int
 	}{
-		{"same project", "tok-a", map[string]string{"name": "x", "router_id": routerA, "peer_project_id": "pa"}, 400},
-		{"bad project id", "tok-a", map[string]string{"name": "x", "router_id": routerA, "peer_project_id": "a b"}, 400},
-		{"unknown peer", "tok-a", map[string]string{"name": "x", "router_id": routerA, "peer_project_id": "nope"}, 404},
-		{"router not owned", "tok-a", map[string]string{"name": "x", "router_id": routerB, "peer_project_id": "pc"}, 400},
-		{"router missing", "tok-a", map[string]string{"name": "x", "router_id": "dddddddd-0000-0000-0000-000000000001", "peer_project_id": "pb"}, 400},
-		{"no name", "tok-a", map[string]string{"router_id": routerA, "peer_project_id": "pb"}, 400},
-		{"reader role", "tok-a-reader", map[string]string{"name": "x", "router_id": routerA, "peer_project_id": "pb"}, 403},
+		{"same project", "tok-a", map[string]string{"name": "x", "router_id": routerA, "peer_project_id": "pa", "peer_router_id": routerA2}, 400},
+		{"bad project id", "tok-a", map[string]string{"name": "x", "router_id": routerA, "peer_project_id": "a b", "peer_router_id": routerB}, 400},
+		{"unknown peer", "tok-a", map[string]string{"name": "x", "router_id": routerA, "peer_project_id": "nope", "peer_router_id": routerB}, 404},
+		{"router not owned", "tok-a", map[string]string{"name": "x", "router_id": routerB, "peer_project_id": "pc", "peer_router_id": routerC}, 400},
+		{"no peer router", "tok-a", map[string]string{"name": "x", "router_id": routerA, "peer_project_id": "pb"}, 400},
+		{"peer router in another project", "tok-a", map[string]string{"name": "x", "router_id": routerA, "peer_project_id": "pb", "peer_router_id": routerC}, 404},
+		{"peer router missing", "tok-a", map[string]string{"name": "x", "router_id": routerA, "peer_project_id": "pb", "peer_router_id": "eeeeeeee-0000-0000-0000-000000000009"}, 404},
+		{"router missing", "tok-a", map[string]string{"name": "x", "router_id": "dddddddd-0000-0000-0000-000000000001", "peer_project_id": "pb", "peer_router_id": routerB}, 400},
+		{"no name", "tok-a", map[string]string{"router_id": routerA, "peer_project_id": "pb", "peer_router_id": routerB}, 400},
+		{"reader role", "tok-a-reader", map[string]string{"name": "x", "router_id": routerA, "peer_project_id": "pb", "peer_router_id": routerB}, 403},
 	}
 	for _, c := range cases {
 		var out map[string]any
@@ -49,9 +54,9 @@ func TestCreateValidation(t *testing.T) {
 func TestCreateLimit409(t *testing.T) {
 	e := newTEnv(t)
 	e.h = New(e.st, e.kf, e.nf, func() config.Config { c := e.cfg; c.MaxNonTerminalPerProject = 2; return c }())
-	e.create(t)
-	e.create(t)
-	if code := e.do(t, "POST", "/v1/peerings", "tok-a", map[string]string{"name": "x", "router_id": routerA, "peer_project_id": "pb"}, nil); code != 409 {
+	e.createPair(t, "tok-a", routerA, "pb", routerB)
+	e.createPair(t, "tok-a", routerA, "pb", routerB2)
+	if code := e.do(t, "POST", "/v1/peerings", "tok-a", map[string]string{"name": "x", "router_id": routerA2, "peer_project_id": "pb", "peer_router_id": routerB}, nil); code != 409 {
 		t.Fatalf("code %d", code)
 	}
 }
@@ -132,10 +137,33 @@ func TestCloudAdminListsAll(t *testing.T) {
 func TestIncomingRequestsDoNotUseLimit(t *testing.T) {
 	e := newTEnv(t)
 	e.h = New(e.st, e.kf, e.nf, func() config.Config { c := e.cfg; c.MaxNonTerminalPerProject = 2; return c }())
-	for i := 0; i < 2; i++ { // project C floods A with requests
-		if code := e.do(t, "POST", "/v1/peerings", "tok-c", map[string]string{"name": "spam", "router_id": routerC, "peer_project_id": "pa"}, nil); code != 201 {
-			t.Fatalf("setup create %d", code)
-		}
+	for _, r := range []string{routerA, routerA2} { // project C floods A with requests
+		e.createPair(t, "tok-c", routerC, "pa", r)
 	}
 	e.create(t) // A can still request its own peering
+}
+
+func TestCreateDuplicatePair409(t *testing.T) {
+	e := newTEnv(t)
+	e.create(t)
+	if code := e.do(t, "POST", "/v1/peerings", "tok-a", map[string]string{"name": "again", "router_id": routerA, "peer_project_id": "pb", "peer_router_id": routerB}, nil); code != 409 {
+		t.Fatalf("second request for the same router pair: %d", code)
+	}
+	// The reverse direction is the same pair.
+	if code := e.do(t, "POST", "/v1/peerings", "tok-b", map[string]string{"name": "rev", "router_id": routerB, "peer_project_id": "pa", "peer_router_id": routerA}, nil); code != 409 {
+		t.Fatalf("reverse request for the same router pair: %d", code)
+	}
+}
+
+func TestGetMakesNoNeutronCalls(t *testing.T) {
+	e := newTEnv(t)
+	v := e.create(t)
+	e.nf.FailNext("GetRouter", errors.New("neutron must not be called on GET"))
+	var got View
+	if code := e.do(t, "GET", "/v1/peerings/"+v.ID, "tok-b", nil, &got); code != 200 {
+		t.Fatalf("get: %d", code)
+	}
+	if _, err := e.nf.GetRouter(context.Background(), routerA); err == nil {
+		t.Fatal("the injected failure was consumed: GET called Neutron")
+	}
 }

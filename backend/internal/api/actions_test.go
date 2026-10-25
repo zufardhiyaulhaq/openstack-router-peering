@@ -11,9 +11,9 @@ import (
 	"github.com/zufardhiyaulhaq/openstack-router-peering/backend/internal/store"
 )
 
-func (e *tenv) accept(t *testing.T, id, token, router string, out any) int {
+func (e *tenv) accept(t *testing.T, id, token string, out any) int {
 	t.Helper()
-	return e.do(t, "POST", "/v1/peerings/"+id+"/accept", token, map[string]string{"router_id": router}, out)
+	return e.do(t, "POST", "/v1/peerings/"+id+"/accept", token, nil, out)
 }
 
 func (e *tenv) status(t *testing.T, id string) model.Status {
@@ -37,7 +37,7 @@ func TestAccept202(t *testing.T) {
 	e := newTEnv(t)
 	v := e.create(t)
 	var out View
-	if code := e.accept(t, v.ID, "tok-b", routerB, &out); code != 202 || out.Status != "provisioning" || out.Role != "accepter" || out.RouterID != routerB {
+	if code := e.accept(t, v.ID, "tok-b", &out); code != 202 || out.Status != "provisioning" || out.Role != "accepter" || out.RouterID != routerB || out.PeerRouterID != routerA {
 		t.Fatalf("code %d view %+v", code, out)
 	}
 	p, _ := e.st.GetPeering(context.Background(), v.ID)
@@ -49,19 +49,21 @@ func TestAccept202(t *testing.T) {
 func TestAcceptByRequester403(t *testing.T) {
 	e := newTEnv(t)
 	v := e.create(t)
-	if code := e.accept(t, v.ID, "tok-a", routerA, nil); code != 403 {
+	if code := e.accept(t, v.ID, "tok-a", nil); code != 403 {
 		t.Fatalf("code %d", code)
 	}
-	if code := e.accept(t, v.ID, "tok-c", routerC, nil); code != 404 {
+	if code := e.accept(t, v.ID, "tok-c", nil); code != 404 {
 		t.Fatalf("foreign project: code %d", code)
 	}
 }
 
-func TestAcceptRouterNotOwned400(t *testing.T) {
+func TestAcceptOwnRouterGone409(t *testing.T) {
 	e := newTEnv(t)
 	v := e.create(t)
-	if code := e.accept(t, v.ID, "tok-b", routerC, nil); code != 400 {
-		t.Fatalf("code %d", code)
+	e.nf.DeleteRouter(routerB)
+	var out errorBody
+	if code := e.accept(t, v.ID, "tok-b", &out); code != 409 || out.Error != "your router no longer exists" {
+		t.Fatalf("code %d body %+v", code, out)
 	}
 }
 
@@ -70,7 +72,7 @@ func TestAcceptOverlap409(t *testing.T) {
 	e.nf.AddRouterSubnet(routerB, netip.MustParsePrefix("10.1.0.0/24"))
 	v := e.create(t)
 	var out errorBody
-	if code := e.accept(t, v.ID, "tok-b", routerB, &out); code != 409 || len(out.Overlaps) != 1 || out.Overlaps[0] != "10.1.0.0/24" {
+	if code := e.accept(t, v.ID, "tok-b", &out); code != 409 || len(out.Overlaps) != 1 || out.Overlaps[0] != "10.1.0.0/24" {
 		t.Fatalf("code %d body %+v", code, out)
 	}
 	if e.status(t, v.ID) != model.StatusPendingAcceptance {
@@ -81,15 +83,14 @@ func TestAcceptOverlap409(t *testing.T) {
 func TestAcceptOverlapWithPeersOfPeer409(t *testing.T) {
 	e := newTEnv(t)
 	// A is already peered with C (10.3.0.0/24); B also uses 10.3.0.0/24.
-	var ac View
-	e.do(t, "POST", "/v1/peerings", "tok-a", map[string]string{"name": "a-c", "router_id": routerA, "peer_project_id": "pc"}, &ac)
-	if code := e.accept(t, ac.ID, "tok-c", routerC, nil); code != 202 {
+	ac := e.createPair(t, "tok-a", routerA, "pc", routerC)
+	if code := e.accept(t, ac.ID, "tok-c", nil); code != 202 {
 		t.Fatalf("setup accept %d", code)
 	}
 	e.nf.AddRouterSubnet(routerB, netip.MustParsePrefix("10.3.0.0/24"))
 	v := e.create(t)
 	var out errorBody
-	if code := e.accept(t, v.ID, "tok-b", routerB, &out); code != 409 || len(out.Overlaps) != 1 || out.Overlaps[0] != "10.3.0.0/24" {
+	if code := e.accept(t, v.ID, "tok-b", &out); code != 409 || len(out.Overlaps) != 1 || out.Overlaps[0] != "10.3.0.0/24" {
 		t.Fatalf("code %d body %+v", code, out)
 	}
 }
@@ -99,7 +100,7 @@ func TestAcceptRequesterRouterGone(t *testing.T) {
 	v := e.create(t)
 	e.nf.DeleteRouter(routerA)
 	var out errorBody
-	if code := e.accept(t, v.ID, "tok-b", routerB, &out); code != 409 || out.Error != "requester router no longer exists" {
+	if code := e.accept(t, v.ID, "tok-b", &out); code != 409 || out.Error != "requester router no longer exists" {
 		t.Fatalf("code %d body %+v", code, out)
 	}
 }
@@ -108,20 +109,18 @@ func TestAcceptRequesterProjectDisabled409(t *testing.T) {
 	e := newTEnv(t)
 	v := e.create(t)
 	e.kf.AddProject(keystone.Project{ID: "pa", Name: "team-a", Enabled: false})
-	if code := e.accept(t, v.ID, "tok-b", routerB, nil); code != 409 {
+	if code := e.accept(t, v.ID, "tok-b", nil); code != 409 {
 		t.Fatalf("code %d", code)
 	}
 }
 
-func TestAcceptDuplicatePair409(t *testing.T) {
+func TestAcceptIgnoresRouterInBody(t *testing.T) {
 	e := newTEnv(t)
-	v1 := e.create(t)
-	v2 := e.create(t)
-	if code := e.accept(t, v1.ID, "tok-b", routerB, nil); code != 202 {
-		t.Fatalf("first accept %d", code)
-	}
-	if code := e.accept(t, v2.ID, "tok-b", routerB, nil); code != 409 {
-		t.Fatalf("second accept %d", code)
+	v := e.create(t)
+	var out View
+	// The accepter cannot swap in another router: the requester chose B's router at request time.
+	if code := e.do(t, "POST", "/v1/peerings/"+v.ID+"/accept", "tok-b", map[string]string{"router_id": routerB2}, &out); code != 202 || out.RouterID != routerB {
+		t.Fatalf("code %d router %s", code, out.RouterID)
 	}
 }
 
@@ -131,7 +130,7 @@ func TestAcceptRacesCancel(t *testing.T) {
 	var wg sync.WaitGroup
 	codes := make([]int, 2)
 	wg.Add(2)
-	go func() { defer wg.Done(); codes[0] = e.accept(t, v.ID, "tok-b", routerB, nil) }()
+	go func() { defer wg.Done(); codes[0] = e.accept(t, v.ID, "tok-b", nil) }()
 	go func() { defer wg.Done(); codes[1] = e.do(t, "DELETE", "/v1/peerings/"+v.ID, "tok-a", nil, nil) }()
 	wg.Wait()
 	// Valid outcomes: the cancel won (accept 409, cancelled); the accept won and the cancel lost
@@ -166,7 +165,7 @@ func TestRepairOnlyDegraded(t *testing.T) {
 	if code := e.do(t, "POST", "/v1/peerings/"+v.ID+"/repair", "tok-a", nil, nil); code != 409 {
 		t.Fatalf("repair pending %d", code)
 	}
-	e.accept(t, v.ID, "tok-b", routerB, nil)
+	e.accept(t, v.ID, "tok-b", nil)
 	e.setStatus(t, v.ID, model.StatusProvisioning, model.StatusActive)
 	e.setStatus(t, v.ID, model.StatusActive, model.StatusDegraded)
 	if code := e.do(t, "POST", "/v1/peerings/"+v.ID+"/repair", "tok-b", nil, nil); code != 202 || e.status(t, v.ID) != model.StatusProvisioning {
@@ -207,7 +206,7 @@ func TestDeleteMatrix(t *testing.T) {
 				e.do(t, "POST", "/v1/peerings/"+v.ID+"/reject", "tok-b", nil, nil)
 			case model.StatusPendingAcceptance:
 			default:
-				e.accept(t, v.ID, "tok-b", routerB, nil)
+				e.accept(t, v.ID, "tok-b", nil)
 				path := []model.Status{model.StatusProvisioning, model.StatusActive, model.StatusDegraded}
 				if c.status == model.StatusDeleting {
 					e.setStatus(t, v.ID, model.StatusProvisioning, model.StatusDeleting)
