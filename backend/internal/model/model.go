@@ -56,6 +56,7 @@ const (
 	ActionDeleteBlocked   = "delete_blocked"
 	ActionDeleted         = "deleted"
 	ActionProjectGone     = "project_gone"
+	ActionRouterGone      = "router_gone"
 	ActionError           = "error"
 )
 

@@ -10,13 +10,14 @@ import (
 
 	"github.com/zufardhiyaulhaq/openstack-router-peering/backend/internal/keystone"
 	"github.com/zufardhiyaulhaq/openstack-router-peering/backend/internal/model"
+	"github.com/zufardhiyaulhaq/openstack-router-peering/backend/internal/neutron"
 	"github.com/zufardhiyaulhaq/openstack-router-peering/backend/internal/store"
 )
 
 func (e *env) pending(t *testing.T) model.Peering {
 	t.Helper()
-	p := &model.Peering{Name: "p", RequesterProjectID: "pa", RequesterRouterID: routerA, AccepterProjectID: "pb", CreatedBy: "ua",
-		ExpiresAt: time.Now().Add(168 * time.Hour)}
+	p := &model.Peering{Name: "p", RequesterProjectID: "pa", RequesterRouterID: routerA, AccepterProjectID: "pb",
+		AccepterRouterID: routerB, CreatedBy: "ua", ExpiresAt: time.Now().Add(168 * time.Hour)}
 	if err := e.st.CreatePeering(context.Background(), p); err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +131,12 @@ func TestSweepOrphan(t *testing.T) {
 	live := e.active(t)
 	ctx := context.Background()
 	e.r.Now = time.Now
-	gone := e.pending(t) // a finished peering whose network was somehow left behind
+	// A finished peering whose network was somehow left behind (another router pair than the live one).
+	gone := model.Peering{Name: "gone", RequesterProjectID: "pa", RequesterRouterID: routerA, AccepterProjectID: "pb",
+		AccepterRouterID: "bbbbbbbb-0000-0000-0000-000000000002", CreatedBy: "ua"}
+	if err := e.st.CreatePeering(ctx, &gone); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := e.st.Transition(ctx, gone.ID, []model.Status{model.StatusPendingAcceptance}, model.StatusCancelled, store.Patch{}, model.Event{Action: model.ActionCancelled}); err != nil {
 		t.Fatal(err)
 	}
@@ -190,5 +196,43 @@ func TestSweepSkipsNetworksWithNoRow(t *testing.T) {
 	}
 	if !e.nf.HasNetwork(unknown) {
 		t.Fatal("sweep deleted a network it has no record of")
+	}
+}
+
+func TestDriftCancelsPendingRouterGone(t *testing.T) {
+	cases := map[string]func(e *env){
+		"accepter router deleted":  func(e *env) { e.nf.DeleteRouter(routerB) },
+		"requester router deleted": func(e *env) { e.nf.DeleteRouter(routerA) },
+		"accepter router moved": func(e *env) {
+			e.nf.DeleteRouter(routerB)
+			e.nf.AddRouter(routerB, "pz", netip.MustParsePrefix("10.2.0.0/24"))
+		},
+	}
+	for name, breakIt := range cases {
+		t.Run(name, func(t *testing.T) {
+			e := newEnv(t)
+			p := e.pending(t)
+			breakIt(e)
+			if err := e.r.DriftOnce(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			got := e.get(t, p.ID)
+			if got.Status != model.StatusCancelled || !strings.Contains(got.StatusReason, "no longer exists") {
+				t.Fatalf("status %s reason %q", got.Status, got.StatusReason)
+			}
+			if last, _ := e.st.LastAction(context.Background(), p.ID); last != model.ActionRouterGone {
+				t.Fatalf("last event %q", last)
+			}
+		})
+	}
+}
+
+func TestDriftPendingNeutronErrorNoChange(t *testing.T) {
+	e := newEnv(t)
+	p := e.pending(t)
+	e.nf.FailNext("GetRouter", &neutron.APIError{Code: 503, Message: "busy"})
+	_ = e.r.DriftOnce(context.Background())
+	if got := e.get(t, p.ID); got.Status != model.StatusPendingAcceptance {
+		t.Fatalf("a Neutron outage must not cancel requests: %s", got.Status)
 	}
 }

@@ -76,7 +76,7 @@ func (r *Reconciler) driftOne(ctx context.Context, p model.Peering) error {
 		return err
 	}
 	if p.Status == model.StatusPendingAcceptance {
-		return nil
+		return r.pendingRoutersStillThere(ctx, p)
 	}
 
 	if p.Status == model.StatusActive {
@@ -166,4 +166,26 @@ func (r *Reconciler) PoolScanOnce(ctx context.Context) error {
 		r.log().Info("transit blocks reserved because they overlap existing subnets", "count", n)
 	}
 	return err
+}
+
+// pendingRoutersStillThere cancels a pending request when either named router is gone or now belongs to another
+// project (spec 2026-10-25 D12). Any Neutron error leaves the request alone.
+func (r *Reconciler) pendingRoutersStillThere(ctx context.Context, p model.Peering) error {
+	for _, s := range []struct{ router, project string }{{p.RequesterRouterID, p.RequesterProjectID}, {p.AccepterRouterID, p.AccepterProjectID}} {
+		if s.router == "" {
+			continue // created before routers were named at request time
+		}
+		rt, err := r.Neutron.GetRouter(ctx, s.router)
+		if err != nil && neutron.KindOf(err) != neutron.KindNotFound {
+			return err
+		}
+		if err == nil && rt.ProjectID == s.project {
+			continue
+		}
+		reason := fmt.Sprintf("router %s no longer exists", s.router)
+		_, err = r.Store.Transition(ctx, p.ID, []model.Status{model.StatusPendingAcceptance}, model.StatusCancelled,
+			store.Patch{StatusReason: &reason}, model.Event{Action: model.ActionRouterGone, Detail: map[string]any{"router": s.router}})
+		return err
+	}
+	return nil
 }
