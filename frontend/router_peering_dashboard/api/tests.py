@@ -104,3 +104,14 @@ class APITests(test.TestCase):
             with self.assertRaises(peering.APIError) as cm:
                 peering.list(self.request)
         self.assertEqual(cm.exception.status, 503)
+
+    def test_list_status_filter_survives_paging(self):
+        page1 = [test.peering(id='rpx-%012d' % i) for i in range(100)]
+        with mock.patch.object(peering.requests, 'request',
+                               side_effect=[response(200, page1), response(200, [])]) as req:
+            peering.list(self.request, direction='outgoing', statuses=['pending_acceptance', 'active'])
+        for call in req.call_args_list:
+            url = call.args[1]
+            self.assertIn('status=pending_acceptance&status=active', url)
+            self.assertIn('direction=outgoing', url)
+        self.assertIn('marker=rpx-000000000099', req.call_args_list[1].args[1])

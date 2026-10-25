@@ -50,12 +50,13 @@ def _call(request, method, path, json=None):
     return body
 
 
-def list(request, direction=None):  # noqa: A001 - mirrors the API verb
-    """Every peering in one direction, following the API's pages (oldest first) up to MAX_PAGES."""
+def list(request, direction=None, statuses=None):  # noqa: A001 - mirrors the API verb
+    """Every peering in one direction (and, if given, in one of statuses), following the API's pages up to MAX_PAGES."""
     out = []
     marker = None
     for _ in range(MAX_PAGES):
         params = [('direction', direction)] if direction else []
+        params += [('status', st) for st in statuses or []]
         params.append(('limit', PAGE_SIZE))
         if marker:
             params.append(('marker', marker))

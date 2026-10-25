@@ -30,9 +30,11 @@ from router_peering_dashboard.api import peering as api  # noqa: E402
 PID = 'rpx-0123456789ab'
 
 
-def by_direction(outgoing=(), incoming=()):
-    def fake(request, direction=None):
-        return list(outgoing) if direction == 'outgoing' else list(incoming)
+def by_direction(outgoing=(), incoming=(), history=()):
+    """Fake api.list that honours direction and the status filter the tabs pass."""
+    def fake(request, direction=None, statuses=None):
+        rows = {'outgoing': outgoing, 'incoming': incoming}.get(direction, history)
+        return [p for p in rows if statuses is None or p['status'] in statuses]
     return fake
 
 
@@ -46,7 +48,7 @@ class IndexTests(test.TestCase):
         self.assertContains(res, 'out-one')
         self.assertContains(res, 'in-one')
         self.assertContains(res, 'Peer Router')
-        self.assertEqual(sorted(c.kwargs.get('direction') for c in list_.call_args_list), ['incoming', 'outgoing'])
+        self.assertEqual({c.kwargs.get('direction') for c in list_.call_args_list}, {'incoming', 'outgoing', None})
 
     @mock.patch.object(api, 'list')
     def test_index_api_error(self, list_):
@@ -277,3 +279,30 @@ class DetailTests(test.TestCase):
         res = self.client.get(DETAIL_URL)
         self.assertEqual(res.status_code, 200)
         self.assertContains(res, 'router peering service unreachable')
+
+
+LIVE = ['pending_acceptance', 'provisioning', 'active', 'degraded', 'deleting']
+FINISHED = ['rejected', 'cancelled', 'expired', 'failed', 'deleted']
+
+
+class HistoryTests(test.TestCase):
+    @mock.patch.object(api, 'list')
+    def test_tabs_split_live_and_history(self, list_):
+        live = test.peering(name='live-one', status='active')
+        done = test.peering(id='rpx-ffffffffffff', name='done-one', status='rejected')
+        list_.side_effect = by_direction([live, done], [], [done])
+        html = self.client.get(INDEX_URL).content.decode()
+        calls = {c.kwargs.get('direction'): c.kwargs.get('statuses') for c in list_.call_args_list}
+        self.assertEqual(calls, {'outgoing': LIVE, 'incoming': LIVE, None: FINISHED})
+        self.assertIn('live-one', html)
+        self.assertIn('done-one', html)
+        self.assertNotIn('outgoing__row_rpx-ffffffffffff', html)  # a finished peering never shows in a live tab
+        self.assertIn('History', html)
+
+    @mock.patch.object(api, 'list')
+    def test_history_has_no_actions(self, list_):
+        done = test.peering(id='rpx-ffffffffffff', name='done-one', status='deleted')
+        list_.side_effect = by_direction([], [], [done])
+        html = self.client.get(INDEX_URL).content.decode()
+        self.assertIn('done-one', html)
+        self.assertNotIn('history__', html.split('done-one')[1].split('</tr>')[0].replace('history__row', ''))

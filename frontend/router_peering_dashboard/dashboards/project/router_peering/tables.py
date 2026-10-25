@@ -8,7 +8,10 @@ from horizon import tables
 from router_peering_dashboard.api import peering as api
 
 PENDING = 'pending_acceptance'
-LIVE = ('provisioning', 'active', 'degraded')
+LIVE = ('provisioning', 'active', 'degraded')  # statuses a Delete applies to
+# What the Outgoing/Incoming tabs show (spec 2026-10-25 D16); everything else is History.
+SHOWN_LIVE = ['pending_acceptance', 'provisioning', 'active', 'degraded', 'deleting']
+FINISHED = ['rejected', 'cancelled', 'expired', 'failed', 'deleted']
 
 
 def wrap(peerings):
@@ -177,3 +180,21 @@ def wrap_events(events):
         e['id'] = str(i)
         out.append(SimpleNamespace(**e))
     return out
+
+
+class HistoryTable(tables.DataTable):
+    """Finished peerings, both directions, read-only."""
+    name = tables.Column('name', verbose_name=_("Name"), link='horizon:project:router_peering:detail')
+    role = tables.Column('role', verbose_name=_("Your side"))
+    peer_project_id = tables.Column('peer_project_id', verbose_name=_("Peer Project ID"))
+    status = tables.Column('status', verbose_name=_("Status"))
+    status_reason = tables.Column('status_reason', verbose_name=_("Details"), empty_value='-')
+
+    class Meta:
+        name = 'history'
+        verbose_name = _("History")
+        table_actions = ()
+        row_actions = ()
+
+    def get_object_id(self, datum):
+        return datum.id

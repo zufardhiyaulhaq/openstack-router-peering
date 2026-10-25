@@ -6,9 +6,9 @@ from router_peering_dashboard.api import peering as api
 from router_peering_dashboard.dashboards.project.router_peering import tables
 
 
-def _list(request, direction):
+def _list(request, direction, statuses):
     try:
-        return tables.wrap(api.list(request, direction=direction))
+        return tables.wrap(api.list(request, direction=direction, statuses=statuses))
     except api.APIError as e:
         messages.error(request, e.message)
         return []
@@ -22,7 +22,7 @@ class OutgoingTab(tabs.TableTab):
     preload = True
 
     def get_outgoing_data(self):
-        return _list(self.request, 'outgoing')
+        return _list(self.request, 'outgoing', tables.SHOWN_LIVE)
 
 
 class IncomingTab(tabs.TableTab):
@@ -33,10 +33,21 @@ class IncomingTab(tabs.TableTab):
     preload = True
 
     def get_incoming_data(self):
-        return _list(self.request, 'incoming')
+        return _list(self.request, 'incoming', tables.SHOWN_LIVE)
+
+
+class HistoryTab(tabs.TableTab):
+    name = _("History")
+    slug = 'history'
+    table_classes = (tables.HistoryTable,)
+    template_name = 'horizon/common/_detail_table.html'
+    preload = True
+
+    def get_history_data(self):
+        return _list(self.request, None, tables.FINISHED)
 
 
 class PeeringTabs(tabs.TabGroup):
     slug = 'peering_tabs'
-    tabs = (OutgoingTab, IncomingTab)
+    tabs = (OutgoingTab, IncomingTab, HistoryTab)
     sticky = True
