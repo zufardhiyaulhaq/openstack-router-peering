@@ -272,3 +272,48 @@ func TestTagsAlwaysSetAfterCreate(t *testing.T) {
 		t.Fatalf("calls %v", rec.calls)
 	}
 }
+
+func TestGetRouterBatchesSubnetLookups(t *testing.T) {
+	const n = 120
+	var subnetCalls []int
+	srv := func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2.0/extensions":
+			writeJSON(w, 200, extensions(true))
+		case "/v2.0/routers/r1":
+			writeJSON(w, 200, map[string]any{"router": map[string]any{"id": "r1", "project_id": "pa"}})
+		case "/v2.0/ports":
+			ports := make([]map[string]any, n)
+			for i := range ports {
+				ports[i] = map[string]any{"id": fmt.Sprintf("p%d", i), "device_owner": "network:router_interface",
+					"fixed_ips": []map[string]any{{"subnet_id": fmt.Sprintf("s%d", i), "ip_address": fmt.Sprintf("10.%d.0.1", i)}}}
+			}
+			writeJSON(w, 200, map[string]any{"ports": ports})
+		case "/v2.0/subnets":
+			ids := r.URL.Query()["id"]
+			subnetCalls = append(subnetCalls, len(ids))
+			subnets := make([]map[string]any, 0, len(ids))
+			for _, id := range ids {
+				var i int
+				fmt.Sscanf(id, "s%d", &i)
+				subnets = append(subnets, map[string]any{"id": id, "cidr": fmt.Sprintf("10.%d.0.0/24", i), "ip_version": 4, "project_id": "pa"})
+			}
+			writeJSON(w, 200, map[string]any{"subnets": subnets})
+		}
+	}
+	rt, err := newServer(t, srv).GetRouter(context.Background(), "r1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rt.SubnetCIDRs) != n {
+		t.Fatalf("got %d CIDRs, want %d", len(rt.SubnetCIDRs), n)
+	}
+	for _, c := range subnetCalls {
+		if c > 50 {
+			t.Fatalf("a subnet lookup carried %d IDs; the URL must stay short (max 50)", c)
+		}
+	}
+	if len(subnetCalls) != 3 {
+		t.Fatalf("subnet calls %v, want 3 batches", subnetCalls)
+	}
+}

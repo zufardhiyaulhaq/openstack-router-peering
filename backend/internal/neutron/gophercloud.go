@@ -13,6 +13,9 @@ import (
 	"github.com/gophercloud/gophercloud/v2"
 )
 
+// subnetBatch is how many subnet IDs go into one lookup (about 40 bytes of query string each).
+const subnetBatch = 50
+
 // Neutron implements Client over a gophercloud network ServiceClient.
 type Neutron struct {
 	sc               *gophercloud.ServiceClient
@@ -148,30 +151,31 @@ func (n *Neutron) GetRouter(ctx context.Context, id string) (Router, error) {
 	if err := n.get(ctx, n.query("ports", url.Values{"device_id": {id}}), &ports); err != nil {
 		return out, err
 	}
-	subnetIDs := url.Values{}
+	var subnetIDs []string
 	for _, p := range ports.Ports {
 		if !strings.HasPrefix(p.DeviceOwner, "network:router_interface") && p.DeviceOwner != "network:ha_router_replicated_interface" {
 			continue
 		}
 		for _, ip := range p.FixedIPs {
-			subnetIDs.Add("id", ip.SubnetID)
+			subnetIDs = append(subnetIDs, ip.SubnetID)
 		}
 	}
-	if len(subnetIDs) == 0 {
-		return out, nil
-	}
-	var subnets struct {
-		Subnets []rawSubnet `json:"subnets"`
-	}
-	if err := n.get(ctx, n.query("subnets", subnetIDs), &subnets); err != nil {
-		return out, err
-	}
-	for _, s := range subnets.Subnets {
-		if s.IPVersion != 4 || s.ProjectID == n.serviceProjectID {
-			continue
+	// Look subnets up in batches so the query string stays well under proxy URL limits (~8 KB).
+	for start := 0; start < len(subnetIDs); start += subnetBatch {
+		q := url.Values{"id": subnetIDs[start:min(start+subnetBatch, len(subnetIDs))]}
+		var subnets struct {
+			Subnets []rawSubnet `json:"subnets"`
 		}
-		if p, err := netip.ParsePrefix(s.CIDR); err == nil {
-			out.SubnetCIDRs = append(out.SubnetCIDRs, p)
+		if err := n.get(ctx, n.query("subnets", q), &subnets); err != nil {
+			return out, err
+		}
+		for _, s := range subnets.Subnets {
+			if s.IPVersion != 4 || s.ProjectID == n.serviceProjectID {
+				continue
+			}
+			if p, err := netip.ParsePrefix(s.CIDR); err == nil {
+				out.SubnetCIDRs = append(out.SubnetCIDRs, p)
+			}
 		}
 	}
 	return out, nil
