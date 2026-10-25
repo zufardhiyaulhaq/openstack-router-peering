@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/netip"
+	"strings"
 	"sync"
 	"testing"
 
@@ -272,5 +273,13 @@ func TestEventsHideOtherSideActor(t *testing.T) {
 	e.do(t, "GET", "/v1/peerings/"+v.ID+"/events", "tok-admin", nil, &admin)
 	if admin[1]["actor_user_id"] != "ub" {
 		t.Fatalf("cloud admin must see every actor: %v", admin[1])
+	}
+}
+
+func TestAcceptSameRouterDifferentCase202(t *testing.T) {
+	e := newTEnv(t)
+	v := e.create(t)
+	if code := e.do(t, "POST", "/v1/peerings/"+v.ID+"/accept", "tok-b", map[string]string{"router_id": strings.ToUpper(routerB)}, nil); code != 202 {
+		t.Fatalf("code %d", code)
 	}
 }

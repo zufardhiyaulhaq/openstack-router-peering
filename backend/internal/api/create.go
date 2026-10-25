@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/zufardhiyaulhaq/openstack-router-peering/backend/internal/keystone"
@@ -51,6 +52,8 @@ func (a *API) create(w http.ResponseWriter, r *http.Request, c caller) {
 		writeErr(w, http.StatusBadRequest, "peer_router_id is not a valid router ID")
 		return
 	}
+	// Canonical form, so the same router typed in another case is still the same router (pair index, D6).
+	req.RouterID, req.PeerRouterID = strings.ToLower(req.RouterID), strings.ToLower(req.PeerRouterID)
 	if _, err := a.ks.GetProject(r.Context(), req.PeerProjectID); errors.Is(err, keystone.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "peer project not found")
 		return

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/netip"
 	"sort"
+	"strings"
 
 	"github.com/zufardhiyaulhaq/openstack-router-peering/backend/internal/keystone"
 	"github.com/zufardhiyaulhaq/openstack-router-peering/backend/internal/model"
@@ -51,7 +52,7 @@ func (a *API) accept(w http.ResponseWriter, r *http.Request, c caller) {
 		RouterID string `json:"router_id"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
-	if body.RouterID != "" && body.RouterID != p.AccepterRouterID {
+	if body.RouterID != "" && !strings.EqualFold(body.RouterID, p.AccepterRouterID) {
 		writeErr(w, http.StatusBadRequest, "this peering is for router "+p.AccepterRouterID+"; accept takes no router")
 		return
 	}

@@ -184,3 +184,18 @@ func TestCreateBadRouterID400(t *testing.T) {
 		}
 	}
 }
+
+func TestCreateCanonicalisesRouterIDs(t *testing.T) {
+	e := newTEnv(t)
+	e.create(t)
+	// The same pair typed in upper case must still count as the same pair.
+	body := map[string]string{"name": "dup", "router_id": strings.ToUpper(routerA), "peer_project_id": "pb", "peer_router_id": strings.ToUpper(routerB)}
+	if code := e.do(t, "POST", "/v1/peerings", "tok-a", body, nil); code != 409 {
+		t.Fatalf("upper-case duplicate of a live pair: %d, want 409", code)
+	}
+	var v View
+	body = map[string]string{"name": "up", "router_id": strings.ToUpper(routerA2), "peer_project_id": "pb", "peer_router_id": strings.ToUpper(routerB2)}
+	if code := e.do(t, "POST", "/v1/peerings", "tok-a", body, &v); code != 201 || v.RouterID != routerA2 || v.PeerRouterID != routerB2 {
+		t.Fatalf("code %d, stored %q / %q, want lower-case IDs", code, v.RouterID, v.PeerRouterID)
+	}
+}
