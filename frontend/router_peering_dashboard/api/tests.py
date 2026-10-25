@@ -115,3 +115,11 @@ class APITests(test.TestCase):
             self.assertIn('status=pending_acceptance&status=active', url)
             self.assertIn('direction=outgoing', url)
         self.assertIn('marker=rpx-000000000099', req.call_args_list[1].args[1])
+
+    def test_list_newest_first(self):
+        with mock.patch.object(peering.requests, 'request', return_value=response(200, [])) as req:
+            peering.list(self.request, statuses=['deleted'], newest=True)
+        self.assertIn('sort=newest', req.call_args.args[1])
+        with mock.patch.object(peering.requests, 'request', return_value=response(200, [])) as req:
+            peering.list(self.request)
+        self.assertNotIn('sort=', req.call_args.args[1])

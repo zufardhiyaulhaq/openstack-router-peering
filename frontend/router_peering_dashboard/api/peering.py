@@ -50,13 +50,18 @@ def _call(request, method, path, json=None):
     return body
 
 
-def list(request, direction=None, statuses=None):  # noqa: A001 - mirrors the API verb
-    """Every peering in one direction (and, if given, in one of statuses), following the API's pages up to MAX_PAGES."""
+def list(request, direction=None, statuses=None, newest=False):  # noqa: A001 - mirrors the API verb
+    """Every peering in one direction (and, if given, in one of statuses), following the API's pages up to MAX_PAGES.
+
+    newest=True asks for newest first, so hitting MAX_PAGES drops the oldest rows, not the latest.
+    """
     out = []
     marker = None
     for _ in range(MAX_PAGES):
         params = [('direction', direction)] if direction else []
         params += [('status', st) for st in statuses or []]
+        if newest:
+            params.append(('sort', 'newest'))
         params.append(('limit', PAGE_SIZE))
         if marker:
             params.append(('marker', marker))

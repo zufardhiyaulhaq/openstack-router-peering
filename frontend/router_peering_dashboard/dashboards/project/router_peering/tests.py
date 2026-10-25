@@ -32,7 +32,7 @@ PID = 'rpx-0123456789ab'
 
 def by_direction(outgoing=(), incoming=(), history=()):
     """Fake api.list that honours direction and the status filter the tabs pass."""
-    def fake(request, direction=None, statuses=None):
+    def fake(request, direction=None, statuses=None, newest=False):
         rows = {'outgoing': outgoing, 'incoming': incoming}.get(direction, history)
         return [p for p in rows if statuses is None or p['status'] in statuses]
     return fake
@@ -292,8 +292,9 @@ class HistoryTests(test.TestCase):
         done = test.peering(id='rpx-ffffffffffff', name='done-one', status='rejected')
         list_.side_effect = by_direction([live, done], [], [done])
         html = self.client.get(INDEX_URL).content.decode()
-        calls = {c.kwargs.get('direction'): c.kwargs.get('statuses') for c in list_.call_args_list}
-        self.assertEqual(calls, {'outgoing': LIVE, 'incoming': LIVE, None: FINISHED})
+        calls = {c.kwargs.get('direction'): (c.kwargs.get('statuses'), c.kwargs.get('newest', False)) for c in list_.call_args_list}
+        # History asks for the newest first, so a long history never hides the latest finished peerings.
+        self.assertEqual(calls, {'outgoing': (LIVE, False), 'incoming': (LIVE, False), None: (FINISHED, True)})
         self.assertIn('live-one', html)
         self.assertIn('done-one', html)
         self.assertNotIn('outgoing__row_rpx-ffffffffffff', html)  # a finished peering never shows in a live tab
