@@ -75,13 +75,15 @@ def events(request, peering_id):
     return _call(request, 'GET', '/v1/peerings/%s/events' % peering_id) or []
 
 
-def create(request, name, router_id, peer_project_id):
-    return _call(request, 'POST', '/v1/peerings',
-                 {'name': name, 'router_id': router_id, 'peer_project_id': peer_project_id})
+def create(request, name, router_id, peer_project_id, peer_router_id):
+    return _call(request, 'POST', '/v1/peerings', {'name': name, 'router_id': router_id,
+                                                   'peer_project_id': peer_project_id,
+                                                   'peer_router_id': peer_router_id})
 
 
-def accept(request, peering_id, router_id):
-    return _call(request, 'POST', '/v1/peerings/%s/accept' % peering_id, {'router_id': router_id})
+def accept(request, peering_id):
+    """Confirm a request: the requester already named both routers."""
+    return _call(request, 'POST', '/v1/peerings/%s/accept' % peering_id)
 
 
 def reject(request, peering_id):

@@ -125,6 +125,8 @@ class PeeringsTable(tables.DataTable):
     name = tables.Column('name', verbose_name=_("Name"), link='horizon:project:router_peering:detail')
     peer_project_id = tables.Column('peer_project_id', verbose_name=_("Peer Project ID"))
     router_id = tables.Column('router_id', verbose_name=_("My Router"), empty_value='-')
+    peer_router_id = tables.Column(lambda p: getattr(p, 'peer_router_id', ''), verbose_name=_("Peer Router"),
+                                   empty_value='-')
     status = tables.Column('status', verbose_name=_("Status"))
     status_reason = tables.Column('status_reason', verbose_name=_("Details"), empty_value='-')
     next_hop = tables.Column('next_hop', verbose_name=_("Next Hop"), empty_value='-')

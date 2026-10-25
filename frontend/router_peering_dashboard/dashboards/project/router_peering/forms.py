@@ -25,6 +25,10 @@ class CreatePeeringForm(forms.SelfHandlingForm):
         label=_("Peer project ID"), max_length=64,
         help_text=_("Ask the other project for its ID. They can find it with "
                     "'openstack token issue -c project_id' or under API Access."))
+    peer_router_id = forms.CharField(
+        label=_("Peer router ID"), max_length=36,
+        help_text=_("Ask the other project for the ID of the router they want to peer "
+                    "(Network > Routers in their project)."))
 
     def __init__(self, request, *args, **kwargs):
         super().__init__(request, *args, **kwargs)
@@ -32,7 +36,8 @@ class CreatePeeringForm(forms.SelfHandlingForm):
 
     def handle(self, request, data):
         try:
-            api.create(request, data['name'], data['router_id'], data['peer_project_id'].strip())
+            api.create(request, data['name'], data['router_id'], data['peer_project_id'].strip(),
+                       data['peer_router_id'].strip())
         except api.APIError as e:
             self.api_error(e.message)
             return False
@@ -41,20 +46,17 @@ class CreatePeeringForm(forms.SelfHandlingForm):
 
 
 class AcceptPeeringForm(forms.SelfHandlingForm):
+    """Confirm-only: the requester named both routers, so there is nothing to choose."""
     peering_id = forms.CharField(widget=forms.HiddenInput())
     requester = forms.CharField(label=_("Requested by project"), required=False,
                                 widget=forms.TextInput(attrs={'readonly': 'readonly'}))
-    router_id = forms.ChoiceField(label=_("Your router"),
-                                  help_text=_("The router in this project to connect. Its subnets must not "
-                                              "overlap the requester's."))
-
-    def __init__(self, request, *args, **kwargs):
-        super().__init__(request, *args, **kwargs)
-        self.fields['router_id'].choices = router_choices(request)
+    your_router = forms.CharField(label=_("Your router"), required=False,
+                                  widget=forms.TextInput(attrs={'readonly': 'readonly'}),
+                                  help_text=_("The router in this project the requester asked to peer with."))
 
     def handle(self, request, data):
         try:
-            api.accept(request, data['peering_id'], data['router_id'])
+            api.accept(request, data['peering_id'])
         except api.APIError as e:
             msg = e.message
             if e.overlaps:

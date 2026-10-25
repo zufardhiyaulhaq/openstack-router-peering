@@ -6,6 +6,7 @@ from horizon import exceptions
 from horizon import forms
 from horizon import tables as horizon_tables
 from horizon import tabs
+from openstack_dashboard.api import neutron
 
 from router_peering_dashboard.api import peering as api
 
@@ -50,7 +51,14 @@ class AcceptView(forms.ModalFormView):
         p = get_peering_or_redirect(self.request, self.kwargs['peering_id'])
         name = p.get('peer_project_name') or ''
         label = '%s (%s)' % (name, p['peer_project_id']) if name else p['peer_project_id']
-        return {'peering_id': p['id'], 'requester': label}
+        return {'peering_id': p['id'], 'requester': label, 'your_router': self._router_label(p.get('router_id', ''))}
+
+    def _router_label(self, router_id):
+        try:
+            name = neutron.router_get(self.request, router_id).name
+        except Exception:
+            return router_id
+        return '%s (%s)' % (name, router_id) if name else router_id
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

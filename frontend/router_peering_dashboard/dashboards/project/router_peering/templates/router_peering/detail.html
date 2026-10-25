@@ -13,8 +13,8 @@
     <dt>{% trans "Your router" %}</dt><dd>{{ peering.router_id|default:"-" }}</dd>
     <dt>{% trans "Peer project ID" %}</dt><dd>{{ peering.peer_project_id }}</dd>
     {% if peering.peer_project_name %}<dt>{% trans "Peer project" %}</dt><dd>{{ peering.peer_project_name }}</dd>{% endif %}
+    <dt>{% trans "Peer router ID" %}</dt><dd>{{ peering.peer_router_id|default:"-" }}</dd>
     <dt>{% trans "Next hop" %}</dt><dd>{{ peering.next_hop|default:"-" }}</dd>
-    <dt>{% trans "Peer CIDRs" %}</dt><dd>{{ peering.peer_cidrs|join:", "|default:"-" }}</dd>
     {% if peering.status == 'pending_acceptance' %}<dt>{% trans "Expires" %}</dt><dd>{{ peering.expires_at }}</dd>{% endif %}
   </dl>
 
@@ -26,7 +26,7 @@
 
   <h4>{% trans "Route hints" %}</h4>
   {% if peering.route_hints %}
-    <p>{% trans "Run these to send traffic for the peer's subnets through the peering. Then allow the peer's CIDRs in your security groups." %}</p>
+    <p>{% trans "Run this once per peer subnet (ask the peer for its subnets) to send that traffic through the peering. Then allow those subnets in your security groups." %}</p>
     {% for hint in peering.route_hints %}<pre>{{ hint }}</pre>{% endfor %}
   {% else %}
     <p>{% trans "Route hints appear once the peering is active." %}</p>

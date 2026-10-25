@@ -48,10 +48,10 @@ class APITests(test.TestCase):
         self.assertSent(req, 'GET', '/v1/peerings/rpx-1/events')
 
     def test_writes(self):
-        _, req = self.call(peering.create, 'n', 'r1', 'pb', status=201, body=test.peering())
-        self.assertSent(req, 'POST', '/v1/peerings', {'name': 'n', 'router_id': 'r1', 'peer_project_id': 'pb'})
-        _, req = self.call(peering.accept, 'rpx-1', 'r2', status=202, body=test.peering())
-        self.assertSent(req, 'POST', '/v1/peerings/rpx-1/accept', {'router_id': 'r2'})
+        _, req = self.call(peering.create, 'n', 'r1', 'pb', 'r2', status=201, body=test.peering())
+        self.assertSent(req, 'POST', '/v1/peerings', {'name': 'n', 'router_id': 'r1', 'peer_project_id': 'pb', 'peer_router_id': 'r2'})
+        _, req = self.call(peering.accept, 'rpx-1', status=202, body=test.peering())
+        self.assertSent(req, 'POST', '/v1/peerings/rpx-1/accept')
         _, req = self.call(peering.reject, 'rpx-1', body=test.peering())
         self.assertSent(req, 'POST', '/v1/peerings/rpx-1/reject')
         _, req = self.call(peering.repair, 'rpx-1', status=202, body=test.peering())
@@ -61,7 +61,7 @@ class APITests(test.TestCase):
 
     def test_error_with_overlaps(self):
         with self.assertRaises(peering.APIError) as cm:
-            self.call(peering.accept, 'rpx-1', 'r2', status=409,
+            self.call(peering.accept, 'rpx-1', status=409,
                       body={'error': 'CIDRs overlap', 'overlaps': ['10.0.0.0/24']})
         self.assertEqual((cm.exception.status, cm.exception.message, cm.exception.overlaps),
                          (409, 'CIDRs overlap', ['10.0.0.0/24']))
