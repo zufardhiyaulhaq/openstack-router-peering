@@ -4,6 +4,8 @@ Date: 2026-10-23 · Status: **approved** (2 facts open, §14) · Supersedes: `do
 
 Items marked **(call)** are tuning values left to the builder.
 
+> **Updated 25/10 by `2026-10-25-peer-router-at-request-design.md`:** the requester names the peer **router** at request time and the accepter only confirms; `peer_cidrs` is no longer exposed; Horizon lists only live peerings, with a History tab. Where this document disagrees, the newer spec wins.
+
 ## 1. Intent
 
 OpenStack has no VPC peering. Neutron has the parts (routers, networks, ports), but a tenant cannot
@@ -71,8 +73,8 @@ project must not depend on anything cloud-specific.
 
 | # | Who | Action | Status after |
 |---|---|---|---|
-| 1 | Requester (project A) | Picks its router, enters B's project ID and a name | `pending_acceptance` |
-| 2a | Accepter (project B) | Picks **its own** router, accepts. Refused with 409 on CIDR overlap (§9); the request stays pending | `provisioning` → `active` |
+| 1 | Requester (project A) | Picks its router, enters B's project ID, **B's router ID** and a name | `pending_acceptance` |
+| 2a | Accepter (project B) | **Confirms** the router the requester named, accepts. Refused with 409 on CIDR overlap (§9); the request stays pending | `provisioning` → `active` |
 | 2b | Accepter | Rejects | `rejected` |
 | 2c | Requester | Cancels before B answers | `cancelled` |
 | 2d | Nobody, 7 days | — | `expired` |
@@ -91,8 +93,8 @@ Keystone's default, not a guarantee.
 | Peer identity | `peer_project_id` only | Requester project **name + ID** (looked up live in Keystone) |
 | Own router | A's router | B's router (empty until accepted) |
 | `next_hop` | B's transit IP | A's transit IP |
-| `peer_cidrs` | Subnets on B's router (info only, after accept) | Subnets on A's router |
-| `route_hint` | `openstack router set --route destination=<cidr>,gateway=<next_hop> <router>` per peer CIDR | the mirror |
+| `peer_router_id` | B's router | A's router |
+| `route_hint` | `openstack router set --route destination=<peer subnet>,gateway=<next_hop> <router>` (one line, placeholder) | the mirror |
 | `warnings` | overlap that appeared after accept (§9) | same |
 
 A request to a project ID that does not exist returns 404. That reveals existence only, and default
@@ -379,7 +381,7 @@ Base path `/v1`. JSON. Auth header `X-Auth-Token` (Keystone v3, project-scoped).
 | `POST` | `/v1/peerings` | member of the requester project | 201, `pending_acceptance` |
 | `GET` | `/v1/peerings?direction=incoming\|outgoing&status=` | member or reader of either side | list, paginated (`limit`, `marker`) |
 | `GET` | `/v1/peerings/{id}` | member or reader of either side | one item, per-caller view (§4.2) |
-| `POST` | `/v1/peerings/{id}/accept` `{router_id}` | member of the accepter project | 202, `provisioning` |
+| `POST` | `/v1/peerings/{id}/accept` (no body) | member of the accepter project | 202, `provisioning` |
 | `POST` | `/v1/peerings/{id}/reject` | member of the accepter project | 200, `rejected` |
 | `POST` | `/v1/peerings/{id}/repair` | member of either side, only when `degraded` | 202, `provisioning` |
 | `DELETE` | `/v1/peerings/{id}` | member of either side | 202 `deleting`, or 200 `cancelled` if requester and still pending |
@@ -394,7 +396,7 @@ Rules:
   other (`admin` ⊃ `member` ⊃ `reader`), so `admin` holders pass too. A stricter cloud can set
   `manager` or another role. A cloud admin (`admin` role on the cloud admin project) can list and
   delete any peering.
-- `POST /v1/peerings` body: `{name, router_id, peer_project_id}`. Checks: router exists and belongs to
+- `POST /v1/peerings` body: `{name, router_id, peer_project_id, peer_router_id}`. Checks: router exists and belongs to
   the token's project; peer project exists and differs; per-project limit of **50 non-terminal
   peerings** (configurable) **(call)**.
 - Accept checks: router belongs to the token's project; not already peered with the requester router.
