@@ -27,3 +27,4 @@ brings it back. Expiry and the orphan sweep are covered by unit tests only.
 | 2026-10-25 | the test cloud 2026.1 ML2/OVN | run 1: every peering `failed` (Neutron rejects `tags` in POST although it advertises `tag-creation`); fixed in `811a7c8` |
 | 2026-10-25 | the test cloud 2026.1 ML2/OVN | run 2: create/accept, ping, delete-blocked, cancel, reject PASS; tenant detach refused with 404 (test assumed it would work), so the test now detaches as admin |
 | 2026-10-25 | the test cloud 2026.1 ML2/OVN | run 3 (`2b27a94`, image `sha-811a7c8`): **all 6 PASS** in 190 s; tenant detach refused (404), admin detach → `degraded` → repair → `active` |
+| 2026-10-25 | test cloud 2026.1 ML2/OVN | run 4 (`10c729c`): **all 6 PASS** in 173 s with the peer router named at request and a confirm-only accept |
