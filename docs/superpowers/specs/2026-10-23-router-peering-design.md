@@ -1,6 +1,6 @@
 # OpenStack Router Peering: design
 
-Date: 2026-10-23 · Status: **approved** (2 facts open, §14) · Supersedes: `docs/brainstorm/2026-10-23-router-peering.md`
+Date: 2026-10-23 · Status: **approved** (2 facts open, §14)
 
 Items marked **(call)** are tuning values left to the builder.
 
