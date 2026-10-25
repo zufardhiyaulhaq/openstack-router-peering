@@ -37,6 +37,14 @@ func (a *API) list(w http.ResponseWriter, r *http.Request, c caller) {
 		writeErr(w, http.StatusBadRequest, "direction must be incoming or outgoing")
 		return
 	}
+	switch q.Get("sort") {
+	case "", "oldest":
+	case "newest":
+		f.Newest = true
+	default:
+		writeErr(w, http.StatusBadRequest, "sort must be newest or oldest")
+		return
+	}
 	for _, s := range q["status"] {
 		f.Statuses = append(f.Statuses, model.Status(s))
 	}

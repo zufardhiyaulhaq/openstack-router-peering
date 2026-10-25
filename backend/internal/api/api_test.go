@@ -199,3 +199,16 @@ func TestCreateCanonicalisesRouterIDs(t *testing.T) {
 		t.Fatalf("code %d, stored %q / %q, want lower-case IDs", code, v.RouterID, v.PeerRouterID)
 	}
 }
+
+func TestListSortNewest(t *testing.T) {
+	e := newTEnv(t)
+	older := e.createPair(t, "tok-a", routerA, "pb", routerB)
+	newer := e.createPair(t, "tok-a", routerA, "pb", routerB2)
+	var out []View
+	if code := e.do(t, "GET", "/v1/peerings?sort=newest", "tok-a", nil, &out); code != 200 || len(out) != 2 || out[0].ID != newer.ID || out[1].ID != older.ID {
+		t.Fatalf("code %d order %v", code, out)
+	}
+	if code := e.do(t, "GET", "/v1/peerings?sort=sideways", "tok-a", nil, nil); code != 400 {
+		t.Fatalf("bad sort: %d", code)
+	}
+}

@@ -150,6 +150,7 @@ type ListFilter struct {
 	Direction string // "incoming", "outgoing" or "" for both
 	Statuses  []model.Status
 	All       bool // cloud admin: ignore ProjectID
+	Newest    bool // newest first (created_at, id descending); default is oldest first
 	Limit     int
 	Marker    string
 }
@@ -176,9 +177,13 @@ func (s *Store) ListPeerings(ctx context.Context, f ListFilter) ([]model.Peering
 	if len(f.Statuses) > 0 {
 		where = append(where, "status::text = ANY("+arg(statusTexts(f.Statuses))+"::text[])")
 	}
+	cmp, order := ">", "created_at, id"
+	if f.Newest {
+		cmp, order = "<", "created_at DESC, id DESC"
+	}
 	if f.Marker != "" {
 		m := arg(f.Marker)
-		where = append(where, "(created_at, id) > (SELECT created_at, id FROM peerings WHERE id = "+m+")")
+		where = append(where, "(created_at, id) "+cmp+" (SELECT created_at, id FROM peerings WHERE id = "+m+")")
 	}
 	limit := f.Limit
 	if limit <= 0 {
@@ -191,7 +196,7 @@ func (s *Store) ListPeerings(ctx context.Context, f ListFilter) ([]model.Peering
 	if len(where) > 0 {
 		q += " WHERE " + strings.Join(where, " AND ")
 	}
-	q += " ORDER BY created_at, id LIMIT " + arg(limit)
+	q += " ORDER BY " + order + " LIMIT " + arg(limit)
 	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err

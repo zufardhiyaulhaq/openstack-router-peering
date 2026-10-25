@@ -245,3 +245,20 @@ func TestCreateSamePairConflict(t *testing.T) {
 		t.Fatalf("want ErrConflict for a second live peering on the same pair, got %v", err)
 	}
 }
+
+func TestListNewestFirst(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	var ids []string
+	for i := 0; i < 3; i++ {
+		ids = append(ids, mustCreate(t, s, newPending("pa", "pb")).ID)
+	}
+	first, _ := s.ListPeerings(ctx, ListFilter{ProjectID: "pa", Newest: true, Limit: 2})
+	if len(first) != 2 || first[0].ID != ids[2] || first[1].ID != ids[1] {
+		t.Fatalf("newest-first page 1 = %v", first)
+	}
+	rest, _ := s.ListPeerings(ctx, ListFilter{ProjectID: "pa", Newest: true, Limit: 2, Marker: first[1].ID})
+	if len(rest) != 1 || rest[0].ID != ids[0] {
+		t.Fatalf("newest-first page 2 = %v", rest)
+	}
+}
